@@ -54,6 +54,13 @@ prometheusOperator:
     limits:
       cpu: 200m
       memory: 256Mi
+  tls:
+    enabled: false
+    # Отдельный переключатель от admissionWebhooks.enabled ниже — этот
+    # управляет внутренним HTTPS-сервером самого оператора (обязательный
+    # TLS-секрет, монтируется unconditionally, даже если сами объекты
+    # ValidatingWebhookConfiguration не создаются). Без явного отключения
+    # под виснет в ContainerCreating: "secret ...-admission not found".
   admissionWebhooks:
     enabled: false
     # Полностью отключаем вебхук валидации PrometheusRule/ServiceMonitor —
