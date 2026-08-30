@@ -1,0 +1,48 @@
+# Helm values для чарта prometheus-community/kube-prometheus-stack.
+# Устанавливается через scripts/bootstrap.sh:
+#   helm install monitoring prometheus-community/kube-prometheus-stack \
+#     -n platform -f infra/base/monitoring/kube-prometheus-stack-values.yaml
+
+grafana:
+  enabled: true
+  adminPassword: "CHANGE_ME"   # TODO: вынести в Secret / внешний секрет-менеджер
+  persistence:
+    enabled: true
+    size: 5Gi
+  defaultDashboardsEnabled: true
+  # Операционные дашборды по разделу 2 ТЗ (загрузка станков, статусы реального
+  # времени) добавляются позже как отдельные ConfigMap с label grafana_dashboard=1,
+  # по мере готовности источников данных (SCADA/MES).
+
+prometheus:
+  prometheusSpec:
+    replicas: 2
+    retention: 15d
+    podAntiAffinity: hard
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard   # TODO: реальный StorageClass
+          resources:
+            requests:
+              storage: 20Gi
+    # ServiceMonitor для RabbitMQ и (позже) для PostgreSQL/Patroni
+    # подключаются через отдельные ServiceMonitor-ресурсы, см. rabbitmq-servicemonitor.yaml
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 2
+  config:
+    route:
+      receiver: "default"
+      routes: []   # TODO: подключить реальный канал уведомлений (Slack/Telegram/email)
+    receivers:
+      - name: "default"

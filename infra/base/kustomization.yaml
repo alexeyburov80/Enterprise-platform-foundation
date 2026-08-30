@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Примечание: RabbitMQ Cluster Operator, Kong и kube-prometheus-stack
+# устанавливаются отдельно через Helm (scripts/bootstrap.sh) — они не
+# входят в этот kustomize-набор, т.к. это CRD/операторы, а не прикладные
+# ресурсы. Здесь — только то, что специфично для этого проекта.
+
+resources:
+  - namespace.yaml
+  - rabbitmq/rabbitmq-cluster.yaml
+  - rabbitmq/topology.yaml
+  - api-gateway/mes-stub-route.yaml
+  - monitoring/rabbitmq-servicemonitor.yaml
+  - monitoring/alerts/rabbitmq-alerts.yaml
+  - stub-service/deployment.yaml

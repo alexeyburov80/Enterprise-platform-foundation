@@ -1,0 +1,67 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/ci-cd.yaml"
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/mes-stub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push mes-stub image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/base/stub-service/app
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  validate-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+      - name: Build staging manifests (dry validation)
+        run: ./kustomize build infra/overlays/staging > /tmp/staging.yaml
+      - name: Build prod manifests (dry validation)
+        run: ./kustomize build infra/overlays/prod > /tmp/prod.yaml
+
+  deploy-staging:
+    needs: [build, validate-manifests]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up kubeconfig
+        run: echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+      - name: Deploy to staging
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl apply -k infra/overlays/staging
+
+  # deploy-prod: запускать вручную/после ручного апрува (workflow_dispatch
+  # или environment protection rule в настройках репозитория) —
+  # прод-деплой из этого шаблона намеренно не автоматизирован полностью.

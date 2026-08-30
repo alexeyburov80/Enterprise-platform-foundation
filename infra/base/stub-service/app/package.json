@@ -1,0 +1,13 @@
+{
+  "name": "mes-stub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Заглушка модуля MES с зафиксированным API-контрактом (принцип 6 ТЗ)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

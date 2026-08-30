@@ -1,0 +1,21 @@
+# Офлайн-бандл — артефакт сборки (образы, чарты, бинарники), несколько ГБ.
+# Восстанавливается через infra/airgap/scripts/00-fetch-bundle.sh, в git не нужен.
+infra/airgap/airgap-bundle/
+infra/airgap/airgap-bundle.tar.gz
+infra/airgap/*.sha256
+
+# Логи отладки
+*.log
+/tmp/
+
+# Локальные kubeconfig / секреты, если кто-то случайно скопирует их в репозиторий
+kubeconfig
+*.kubeconfig
+k3s.yaml
+
+# Node.js (на случай локальной разработки mes-stub вне контейнера)
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store

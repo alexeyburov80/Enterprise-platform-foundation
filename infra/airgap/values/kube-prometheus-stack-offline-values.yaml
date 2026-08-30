@@ -1,0 +1,128 @@
+# То же, что infra/base/monitoring/kube-prometheus-stack-values.yaml, но
+# урезано под один офлайн-узел и с явным resources/pullPolicy везде.
+#
+# ВАЖНО про resources: namespace platform имеет ResourceQuota (platform-quota,
+# infra/base/namespace.yaml), которая требует явных requests/limits у КАЖДОГО
+# контейнера без исключений. Если забыть resources хоть для одного контейнера —
+# под будет отклонён на этапе admission ещё до планирования, без единого
+# намёка на ошибку в описании пода (это и произошло с Kong ingress-controller,
+# см. историю отладки) — сообщение видно только в Events у ReplicaSet/Job.
+#
+# ВАЖНО про ключи подчинённых чартов: kube-state-metrics и prometheus-node-exporter —
+# ОТДЕЛЬНЫЕ подчинённые чарты. Их настройки (image, resources) задаются под
+# ключом-ИМЕНЕМ ЧАРТА (через дефис) — "kube-state-metrics:" и
+# "prometheus-node-exporter:", а НЕ camelCase-ключами "kubeStateMetrics:"/
+# "nodeExporter:" верхнего уровня (те относятся только к настройкам
+# ServiceMonitor со стороны kube-prometheus-stack, не к самому поду).
+
+grafana:
+  enabled: true
+  adminPassword: "CHANGE_ME"
+  image:
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 5Gi
+  defaultDashboardsEnabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  sidecar:
+    image:
+      pullPolicy: IfNotPresent
+    resources:
+      # Общие resources для sidecar-контейнеров (dashboards + datasources) —
+      # это тот самый образ quay.io/kiwigrid/k8s-sidecar из bundle.
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+prometheusOperator:
+  image:
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  admissionWebhooks:
+    enabled: false
+    # Полностью отключаем вебхук валидации PrometheusRule/ServiceMonitor —
+    # по умолчанию он тянет отдельный образ kube-webhook-certgen (или требует
+    # cert-manager), который мы не готовили в bundle. Наши PrometheusRule
+    # написаны вручную и просты, риск невалидного правила низкий; отключение
+    # экономит ещё один круг "нашли образ — пересобрали bundle".
+
+prometheus:
+  prometheusSpec:
+    replicas: 1        # на одном узле реплика бессмысленна — включим при масштабировании
+    retention: 15d
+    image:
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path   # дефолтный StorageClass k3s
+          resources:
+            requests:
+              storage: 20Gi
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    image:
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  config:
+    route:
+      receiver: "default"
+      routes: []
+    receivers:
+      - name: "default"
+
+# Ключ-имя чарта (через дефис) — см. пояснение в шапке файла.
+kube-state-metrics:
+  image:
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Ключ-имя чарта (через дефис) — см. пояснение в шапке файла.
+prometheus-node-exporter:
+  image:
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

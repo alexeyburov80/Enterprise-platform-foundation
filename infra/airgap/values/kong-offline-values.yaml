@@ -1,0 +1,66 @@
+# То же, что infra/base/api-gateway/kong-values.yaml, но с явным
+# imagePullPolicy: IfNotPresent — образ уже импортирован в containerd
+# из bundle, повторного pull из сети быть не должно.
+
+image:
+  repository: kong
+  tag: "3.7"
+  pullPolicy: IfNotPresent
+
+env:
+  database: "off"
+
+replicaCount: 1
+# На single-node (локальный тест / офлайн-сервер) 2 реплики с hard
+# pod anti-affinity ниже никогда не поднимутся вместе — вторая вечно
+# висела бы в Pending, а `helm --wait` ждал бы её до таймаута (именно
+# так это и проявлялось). Для многоузлового прод-кластера используйте
+# infra/base/api-gateway/kong-values.yaml (replicaCount: 2) напрямую.
+
+podDisruptionBudget:
+  enabled: false
+  # При replicaCount: 1 включённый PDB (minAvailable: 1) блокирует любые
+  # обновления пода — сам чарт Kong отказывается ставиться с такой
+  # комбинацией. На single-node это и не нужно: реплика одна, вытеснять
+  # с других узлов всё равно некуда. Для многоузлового прод-кластера —
+  # см. infra/base/api-gateway/kong-values.yaml (replicaCount: 2, PDB включён).
+
+# affinity с requiredDuringScheduling намеренно убран здесь — при
+# replicaCount: 1 он бессмысленен, а на будущее при масштабировании
+# до нескольких узлов лучше сразу использовать preferredDuringScheduling
+# (soft), чтобы вторая реплика могла запуститься, даже если разъехаться
+# по разным узлам временно не получается.
+
+ingressController:
+  enabled: true
+  installCRDs: true
+  image:
+    pullPolicy: IfNotPresent
+  resources:
+    # ОБЯЗАТЕЛЬНО отдельно от resources: верхнего уровня — тот относится
+    # только к контейнеру proxy. ingress-controller — отдельный сайдкар,
+    # и ResourceQuota namespace (platform-quota, требует limits/requests
+    # у КАЖДОГО контейнера без исключений) отклоняла создание пода на
+    # этапе admission именно из-за отсутствия этого блока — отсюда
+    # "0 подов Kong" вообще без вменяемой ошибки на уровне planning/сети.
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+proxy:
+  type: ClusterIP   # на одном офлайн-узле LoadBalancer обычно недоступен
+
+admin:
+  enabled: true
+  type: ClusterIP
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

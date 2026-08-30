@@ -1,0 +1,89 @@
+# Шаблон деплоя модуля (сейчас — заглушка MES). Когда появится реальная
+# реализация MES, этот манифест меняется только в части image/env —
+# Service, Ingress (см. api-gateway/mes-stub-route.yaml) и контракт API
+# остаются прежними (принцип 6 ТЗ).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mes-stub
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: mes-stub
+    app.kubernetes.io/component: mes
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mes-stub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mes-stub
+        app.kubernetes.io/component: mes
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: mes-stub
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: mes-stub
+          # По умолчанию — тег, который импортируется офлайн-бандлом
+          # (infra/airgap/scripts/00-fetch-bundle.sh собирает именно mes-stub:offline).
+          # Для online-разворачивания через CI/CD (.github/workflows/ci-cd.yaml)
+          # тег переопределяется через `kustomize edit set image` перед apply —
+          # сам файл руками менять не нужно.
+          image: mes-stub:offline
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: RABBITMQ_HOST
+              value: platform-rabbitmq.platform.svc.cluster.local
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mes-stub
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: mes-stub
+spec:
+  selector:
+    app.kubernetes.io/name: mes-stub
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mes-stub-pdb
+  namespace: platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mes-stub

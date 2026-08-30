@@ -1,0 +1,62 @@
+# Требует RabbitMQ Messaging Topology Operator (устанавливается вместе
+# с Cluster Operator в scripts/bootstrap.sh). Позволяет объявлять
+# exchange/queue/policy декларативно, версионируя их в git вместе с кодом.
+#
+# Ниже — пример "скелета" шины: один общий exchange для событий бизнес-слоёв
+# и политика, гарантирующая quorum queues + репликацию для всех очередей
+# (раздел 5 ТЗ: "quorum queues для репликации очередей между узлами").
+
+apiVersion: rabbitmq.com/v1beta1
+kind: Exchange
+metadata:
+  name: platform-events
+  namespace: platform
+spec:
+  name: platform.events
+  type: topic
+  durable: true
+  rabbitmqClusterReference:
+    name: platform-rabbitmq
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Policy
+metadata:
+  name: quorum-queues-policy
+  namespace: platform
+spec:
+  name: quorum-queues
+  pattern: "^.*"
+  applyTo: queues
+  definition:
+    queue-mode: quorum
+    ha-mode: ""      # не используется вместе с quorum queues
+  rabbitmqClusterReference:
+    name: platform-rabbitmq
+---
+# Пример очереди для модуля-заглушки MES (см. infra/base/stub-service).
+# Каждый новый модуль добавляет свою очередь по этому образцу — без
+# изменения общей конфигурации шины (принцип 5 ТЗ: независимость модулей).
+apiVersion: rabbitmq.com/v1beta1
+kind: Queue
+metadata:
+  name: mes-events-queue
+  namespace: platform
+spec:
+  name: mes.events
+  type: quorum
+  durable: true
+  rabbitmqClusterReference:
+    name: platform-rabbitmq
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Binding
+metadata:
+  name: mes-events-binding
+  namespace: platform
+spec:
+  source: platform.events
+  destination: mes.events
+  destinationType: queue
+  routingKey: "mes.*"
+  rabbitmqClusterReference:
+    name: platform-rabbitmq

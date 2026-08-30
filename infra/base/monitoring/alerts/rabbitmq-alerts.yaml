@@ -1,0 +1,39 @@
+# Алерты по требованию раздела 5 ТЗ: "не только на падение сервиса, но и
+# на... рост бэклога в шине".
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-rabbitmq-alerts
+  namespace: platform
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: rabbitmq.rules
+      rules:
+        - alert: RabbitMQNodeDown
+          expr: sum(rabbitmq_build_info) < 3
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Меньше 3 живых узлов RabbitMQ"
+            description: "Ожидается кластер из 3 узлов, сейчас доступно меньше."
+
+        - alert: RabbitMQQueueBacklogGrowing
+          expr: sum(rabbitmq_queue_messages_ready) by (queue) > 10000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Растущий бэклог в очереди {{ $labels.queue }}"
+            description: "Более 10000 необработанных сообщений в течение 10 минут — потребитель не успевает или упал."
+
+        - alert: RabbitMQQuorumQueueNoLeader
+          expr: rabbitmq_queue_leader_election_count > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Переизбрание лидера quorum-очереди"
+            description: "Возможна нестабильность узла или сетевые проблемы в кластере RabbitMQ."

@@ -1,0 +1,24 @@
+# Пример маршрута через Kong Ingress Controller для модуля-заглушки.
+# Каждый новый модуль (реальный или стаб) добавляет свой Ingress по этому
+# образцу — API Gateway не знает, стаб за ним или реальная реализация
+# (принцип 6 ТЗ: заглушка неотличима от реального сервиса по контракту).
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mes-stub-ingress
+  namespace: platform
+  annotations:
+    konghq.com/strip-path: "true"
+spec:
+  ingressClassName: kong
+  rules:
+    - http:
+        paths:
+          - path: /api/mes
+            pathType: Prefix
+            backend:
+              service:
+                name: mes-stub
+                port:
+                  number: 80

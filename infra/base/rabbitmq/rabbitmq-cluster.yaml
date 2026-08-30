@@ -1,0 +1,70 @@
+# Требует предварительно установленный RabbitMQ Cluster Operator
+# (см. scripts/bootstrap.sh). Сам оператор создаёт StatefulSet, Service,
+# PDB и секреты — вручную их не пишем (принцип 3 ТЗ: готовые компоненты).
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: platform-rabbitmq
+  namespace: platform
+  annotations:
+    # Оператор 2.22+ по умолчанию использует HTTP startupProbe на эндпоинт
+    # /api/health/checks/reached-target-cluster-size — он появился только
+    # в RabbitMQ 4.2.4+/4.3.0+. У нас образ rabbitmq:3.13-management (см.
+    # spec.image ниже), эндпоинта там нет → стабильный HTTP 404 на каждой
+    # проверке → под никогда не становится Ready → бесконечный CrashLoop.
+    # Аннотация возвращает старый exec-based probe (rabbitmq-diagnostics),
+    # совместимый с 3.13. При обновлении образа RabbitMQ до 4.2.4+ эту
+    # аннотацию стоит убрать и перейти на новый HTTP-based health check.
+    rabbitmq.com/legacy-startup-probe: "true"
+spec:
+  replicas: 3
+  image: rabbitmq:3.13-management
+  # imagePullPolicy отдельным полем не поддерживается схемой RabbitmqCluster CRD
+  # (strict decoding отклоняет неизвестные поля) — но k8s и так ставит
+  # IfNotPresent по умолчанию для любого тега, кроме ":latest", так что
+  # повторных обращений к сети при уже импортированном образе не будет.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  persistence:
+    storageClassName: standard   # TODO: заменить на реальный StorageClass кластера
+    storage: 10Gi
+  rabbitmq:
+    additionalConfig: |
+      cluster_partition_handling = pause_minority
+      vm_memory_high_watermark.relative = 0.6
+      # quorum queues по умолчанию, чтобы новые очереди без явного типа
+      # автоматически были реплицированными (раздел 5 ТЗ)
+      default_queue_type = quorum
+  override:
+    statefulSet:
+      spec:
+        template:
+          spec:
+            # containers: [] обязателен схемой CRD (embedding corev1.PodSpec,
+            # поле без omitempty), даже если мы не переопределяем сами контейнеры —
+            # только antiAffinity ниже.
+            containers: []
+            # Антиаффинити: реплики RabbitMQ на разных узлах (раздел 5 ТЗ)
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: platform-rabbitmq
+                    topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: platform-rabbitmq-pdb
+  namespace: platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-rabbitmq

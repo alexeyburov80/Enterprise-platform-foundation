@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Для single-node k3s (локальный тест / офлайн-сервер, infra/airgap/).
+# В отличие от overlays/staging, НЕ меняет namespace — Kong и kube-prometheus-stack
+# уже установлены Helm-ом в namespace "platform" (см. infra/airgap/scripts/40-install-charts.sh),
+# и RabbitMQ/mes-stub должны остаться в том же namespace, иначе Ingress-маршрут через
+# Kong и ServiceMonitor не найдут свои сервисы.
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: RabbitmqCluster
+      name: platform-rabbitmq
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/persistence/storageClassName
+        value: local-path
+      # local-path — дефолтный StorageClass в k3s. 3 реплики RabbitMQ на одном
+      # узле всё равно не смогут разъехаться по антиаффинити — снижаем до 1.
+  - target:
+      kind: Deployment
+      name: mes-stub
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      # 2 реплики с hard pod anti-affinity на разные узлы никогда не поднимутся
+      # на одном узле — вторая вечно висела бы в Pending.

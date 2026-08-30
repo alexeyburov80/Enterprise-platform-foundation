@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform
+
+resources:
+  - ../../base
+
+# Прод использует значения по умолчанию из base (3 реплики RabbitMQ,
+# 2 реплики стаб-сервиса). Здесь со временем появятся прод-специфичные
+# лимиты ресурсов, реальный StorageClass и т.п.
