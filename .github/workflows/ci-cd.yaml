@@ -48,19 +48,19 @@ jobs:
       - name: Build prod manifests (dry validation)
         run: ./kustomize build infra/overlays/prod > /tmp/prod.yaml
 
-  deploy-staging:
-    needs: [build, validate-manifests]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up kubeconfig
-        run: echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
-      - name: Deploy to staging
-        run: |
-          export KUBECONFIG=kubeconfig
-          kubectl apply -k infra/overlays/staging
+  # deploy-staging:
+  #     needs: [build, validate-manifests]
+  #     if: github.ref == 'refs/heads/main'
+  #     runs-on: ubuntu-latest
+  #     environment: staging
+  #     steps:
+  #       - uses: actions/checkout@v4
+  #       - name: Set up kubeconfig
+  #         run: echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+  #       - name: Deploy to staging
+  #         run: |
+  #           export KUBECONFIG=kubeconfig
+  #           kubectl apply -k infra/overlays/staging
 
   # deploy-prod: запускать вручную/после ручного апрува (workflow_dispatch
   # или environment protection rule в настройках репозитория) —
