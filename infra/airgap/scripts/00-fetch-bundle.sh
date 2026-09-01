@@ -2,13 +2,31 @@
 set -euo pipefail
 
 # Запускать ТОЛЬКО на машине с доступом в интернет (не на целевом air-gap сервере).
-# Требуются: docker (или podman с алиасом docker), curl, tar.
+# Требуются: docker (или podman с алиасом docker), curl, tar, yq (для release/manifest.yaml).
 # Результат: ./airgap-bundle.tar.gz — переносится на целевой сервер офлайн-способом.
+#
+# Все версии читаются из release/manifest.yaml — единственного источника истины
+# (Phase 1 аудит, находка C2: раньше здесь был "latest" для RabbitMQ-операторов,
+# из-за чего bundle, собранный сегодня и через месяц, был двумя разными,
+# невоспроизводимыми релизами).
 
-K3S_VERSION="${K3S_VERSION:-v1.30.5+k3s1}"
-KUBECTL_VERSION="${KUBECTL_VERSION:-v1.30.5}"
-HELM_VERSION="${HELM_VERSION:-v3.15.4}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# shellcheck source=../../../scripts/lib/manifest.sh
+source "$REPO_ROOT/scripts/lib/manifest.sh"
+
+K3S_VERSION="${K3S_VERSION:-$(manifest_get '.kubernetes.version')}"
+KUBECTL_VERSION="${KUBECTL_VERSION:-$(manifest_get '.tooling.kubectl.version')}"
+HELM_VERSION="${HELM_VERSION:-$(manifest_get '.tooling.helm.version')}"
+RABBITMQ_OPERATOR_VERSION="$(manifest_get '.operators.rabbitmq_cluster_operator.version')"
+RABBITMQ_OPERATOR_URL="$(manifest_get '.operators.rabbitmq_cluster_operator.manifest_url')"
+TOPOLOGY_OPERATOR_VERSION="$(manifest_get '.operators.rabbitmq_messaging_topology_operator.version')"
+TOPOLOGY_OPERATOR_URL="$(manifest_get '.operators.rabbitmq_messaging_topology_operator.manifest_url_no_certmanager')"
+RABBITMQ_IMAGE="$(manifest_get '.images.rabbitmq')"
 ARCH="${ARCH:-amd64}"
+
+echo "==> Версии из release/manifest.yaml:"
+echo "    k3s=${K3S_VERSION} kubectl=${KUBECTL_VERSION} helm=${HELM_VERSION}"
+echo "    rabbitmq-cluster-operator=${RABBITMQ_OPERATOR_VERSION} messaging-topology-operator=${TOPOLOGY_OPERATOR_VERSION}"
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$WORKDIR/airgap-bundle"
@@ -36,18 +54,21 @@ cp "/tmp/linux-${ARCH}/helm" "$BUNDLE/bin/helm"
 chmod +x "$BUNDLE"/bin/*
 export PATH="$BUNDLE/bin:$PATH"   # чтобы шаги ниже использовали скачанные helm/kubectl, а не системные
 
-echo "==> [2/6] RabbitMQ operator manifesты (без cert-manager)"
-curl -fL "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml" \
+echo "==> [2/6] RabbitMQ operator manifesты ${RABBITMQ_OPERATOR_VERSION}/${TOPOLOGY_OPERATOR_VERSION} (без cert-manager, pinned)"
+curl -fL "$RABBITMQ_OPERATOR_URL" \
   -o "$BUNDLE/manifests/cluster-operator.yml"
-curl -fL "https://github.com/rabbitmq/messaging-topology-operator/releases/latest/download/messaging-topology-operator.yaml" \
+curl -fL "$TOPOLOGY_OPERATOR_URL" \
   -o "$BUNDLE/manifests/messaging-topology-operator.yaml"
 
-echo "==> [3/6] Helm-чарты (kong, kube-prometheus-stack) — скачиваем как .tgz"
+KONG_CHART_VERSION="$(manifest_get '.charts.kong.version')"
+PROMETHEUS_CHART_VERSION="$(manifest_get '.charts.kube-prometheus-stack.version')"
+
+echo "==> [3/6] Helm-чарты kong=${KONG_CHART_VERSION} kube-prometheus-stack=${PROMETHEUS_CHART_VERSION} (pinned, .tgz)"
 helm repo add kong https://charts.konghq.com >/dev/null
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
 helm repo update >/dev/null
-helm pull kong/kong --destination "$BUNDLE/charts"
-helm pull prometheus-community/kube-prometheus-stack --destination "$BUNDLE/charts"
+helm pull kong/kong --version "$KONG_CHART_VERSION" --destination "$BUNDLE/charts"
+helm pull prometheus-community/kube-prometheus-stack --version "$PROMETHEUS_CHART_VERSION" --destination "$BUNDLE/charts"
 
 echo "==> [4/6] Собираем образ mes-stub (явно под linux/amd64 — избегаем multi-arch manifest list)"
 docker build --platform linux/amd64 -t mes-stub:offline "$WORKDIR/../base/stub-service/app"
@@ -62,7 +83,7 @@ helm template monitoring "$BUNDLE"/charts/kube-prometheus-stack-*.tgz -f "$WORKD
   | grep -oP '^\s*image:\s*"?\K[^"\s]+' >> "$IMAGES_FILE" || true
 grep -oP '(?<=image: ).*' "$BUNDLE/manifests/cluster-operator.yml" | tr -d '"' >> "$IMAGES_FILE" || true
 grep -oP '(?<=image: ).*' "$BUNDLE/manifests/messaging-topology-operator.yaml" | tr -d '"' >> "$IMAGES_FILE" || true
-echo "rabbitmq:3.13-management" >> "$IMAGES_FILE"
+echo "$RABBITMQ_IMAGE" >> "$IMAGES_FILE"
 
 sort -u -o "$IMAGES_FILE" "$IMAGES_FILE"
 echo "    Найдено образов: $(wc -l < "$IMAGES_FILE")"

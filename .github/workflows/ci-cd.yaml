@@ -40,13 +40,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install kustomize
+      - name: Install yq
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          # Версия yq зафиксирована здесь (не 'latest') — она нужна только чтобы
+          # прочитать pinned-версию kustomize из release/manifest.yaml на шаге ниже.
+          sudo curl -fL "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64" \
+            -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+      - name: Install kustomize (pinned via release/manifest.yaml)
+        run: |
+          KUSTOMIZE_VERSION="$(yq eval '.tooling.kustomize.version' release/manifest.yaml)"
+          KUSTOMIZE_URL="$(yq eval '.tooling.kustomize.source' release/manifest.yaml)"
+          echo "kustomize ${KUSTOMIZE_VERSION}"
+          curl -fL "$KUSTOMIZE_URL" -o /tmp/kustomize.tar.gz
+          tar -xzf /tmp/kustomize.tar.gz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+      # Раньше здесь проверялись только overlays/staging и overlays/prod. Как только
+      # появятся overlays/single|standard|ha|existing (Phase 3, инкремент 2), CI должен
+      # валидировать ВСЕ профили, а не два условных — иначе поломки в непроверенном
+      # overlay будут проходить мимо CI незамеченными.
       - name: Build staging manifests (dry validation)
-        run: ./kustomize build infra/overlays/staging > /tmp/staging.yaml
+        run: kustomize build infra/overlays/staging > /tmp/staging.yaml
       - name: Build prod manifests (dry validation)
-        run: ./kustomize build infra/overlays/prod > /tmp/prod.yaml
+        run: kustomize build infra/overlays/prod > /tmp/prod.yaml
 
   # deploy-staging:
   #     needs: [build, validate-manifests]
