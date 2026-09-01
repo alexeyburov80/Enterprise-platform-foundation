@@ -4,8 +4,8 @@ export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "==> Применяем манифесты проекта (kustomize overlays/offline — single-node: local-path StorageClass, 1 реплика вместо 3/2, тот же namespace 'platform')"
-kubectl apply -k "$HERE/../overlays/offline"
+echo "==> Применяем манифесты проекта (kustomize overlays/single — single-node: local-path StorageClass, 1 реплика вместо 3/2, тот же namespace 'platform')"
+kubectl apply -k "$HERE/../overlays/single"
 
 echo "==> Ждём готовности RabbitMQ-кластера (это StatefulSet оператора, может занять пару минут)"
 kubectl wait --for=condition=ClusterAvailable rabbitmqcluster/platform-rabbitmq -n platform --timeout=5m || true

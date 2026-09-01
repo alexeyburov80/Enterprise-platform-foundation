@@ -55,14 +55,17 @@ jobs:
           curl -fL "$KUSTOMIZE_URL" -o /tmp/kustomize.tar.gz
           tar -xzf /tmp/kustomize.tar.gz -C /tmp
           sudo mv /tmp/kustomize /usr/local/bin/kustomize
-      # Раньше здесь проверялись только overlays/staging и overlays/prod. Как только
-      # появятся overlays/single|standard|ha|existing (Phase 3, инкремент 2), CI должен
-      # валидировать ВСЕ профили, а не два условных — иначе поломки в непроверенном
-      # overlay будут проходить мимо CI незамеченными.
+      # Раньше здесь проверялись только overlays/staging и overlays/prod. Теперь
+      # профили — single/standard/ha (см. Phase 3, инкремент 2) — валидируются
+      # все, чтобы поломка в непроверенном overlay не проходила мимо CI незамеченной.
       - name: Build staging manifests (dry validation)
         run: kustomize build infra/overlays/staging > /tmp/staging.yaml
-      - name: Build prod manifests (dry validation)
-        run: kustomize build infra/overlays/prod > /tmp/prod.yaml
+      - name: Build single-node profile manifests (dry validation)
+        run: kustomize build infra/overlays/single > /tmp/single.yaml
+      - name: Build standard profile manifests (dry validation)
+        run: kustomize build infra/overlays/standard > /tmp/standard.yaml
+      - name: Build ha profile manifests (dry validation)
+        run: kustomize build infra/overlays/ha > /tmp/ha.yaml
 
   # deploy-staging:
   #     needs: [build, validate-manifests]

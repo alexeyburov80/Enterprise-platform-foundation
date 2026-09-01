@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Профиль "single" — один узел (локальный тест, edge, офлайн-сервер,
+# infra/airgap/). НЕ меняет namespace — Kong и kube-prometheus-stack уже
+# установлены Helm-ом в namespace "platform", и RabbitMQ/mes-stub должны
+# остаться в том же namespace, иначе Ingress-маршрут через Kong и
+# ServiceMonitor не найдут свои сервисы.
+#
+# Профиль (single/standard/ha) — ось, независимая от online/offline
+# (см. architecture.md, раздел 1): этот же overlay используется и для
+# обычной локальной установки на одном сервере, и для air-gap переноса —
+# разница только в том, откуда installer берёт образы/чарты, не в топологии.
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: RabbitmqCluster
+      name: platform-rabbitmq
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/persistence/storageClassName
+        value: local-path
+      # local-path — дефолтный StorageClass в k3s. 3 реплики RabbitMQ на одном
+      # узле всё равно не смогут разъехаться по antiAffinity (см. base) —
+      # снижаем до 1. С 1 репликой сам блок antiAffinity в base безвреден
+      # (не с кем конфликтовать), отдельно патчить/убирать его не нужно.
+  - target:
+      kind: Deployment
+      name: mes-stub
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      # 2 реплики с hard pod anti-affinity на разные узлы никогда не поднимутся
+      # на одном узле — вторая вечно висела бы в Pending.

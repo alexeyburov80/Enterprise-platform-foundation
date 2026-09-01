@@ -1,0 +1,75 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Профиль "standard" — обычная прод-установка на нескольких узлах (не
+# требующая гарантированного разъезда реплик по разным узлам, в отличие
+# от "ha"). Реплики берутся из base как есть (3 RabbitMQ / 2 mes-stub —
+# Kong-реплики задаются отдельно через Helm values, не здесь).
+#
+# В отличие от "ha", anti-affinity здесь МЯГКАЯ (preferred, не required) +
+# добавлен topologySpreadConstraints — на кластере с небольшим числом узлов
+# (2-3) это даёт равномерное распределение без риска, что под навсегда
+# зависнет в Pending, если подходящих свободных узлов временно не хватает
+# (см. Phase 1 аудит, находка M3). Для гарантированного разъезда — profile "ha".
+
+namespace: platform
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: RabbitmqCluster
+      name: platform-rabbitmq
+    patch: |-
+      - op: replace
+        path: /spec/persistence/storageClassName
+        value: local-path
+        # Дефолт для k3s на 2-3 узлах. Для кластера с полноценным сетевым/
+        # распределённым хранилищем (Ceph, Longhorn, облачный CSI) замените
+        # на реальный StorageClass — local-path привязывает под к узлу,
+        # что снижает отказоустойчивость при потере узла.
+      - op: replace
+        path: /spec/override/statefulSet/spec/template/spec/affinity
+        value:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: platform-rabbitmq
+                  topologyKey: kubernetes.io/hostname
+      - op: add
+        path: /spec/override/statefulSet/spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: platform-rabbitmq
+  - target:
+      kind: Deployment
+      name: mes-stub
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/affinity
+        value:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: mes-stub
+                  topologyKey: kubernetes.io/hostname
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: mes-stub

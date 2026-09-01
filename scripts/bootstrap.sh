@@ -41,4 +41,8 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   --version "$PROMETHEUS_CHART_VERSION" \
   -n platform -f infra/base/monitoring/kube-prometheus-stack-values.yaml
 
-echo "==> Готово. Дальше: kubectl apply -k infra/overlays/staging"
+echo "==> Готово. Дальше выберите профиль по топологии кластера:"
+echo "      kubectl apply -k infra/overlays/single    # один узел"
+echo "      kubectl apply -k infra/overlays/standard  # несколько узлов, мягкая anti-affinity"
+echo "      kubectl apply -k infra/overlays/ha        # 3+ узла, гарантированный разъезд реплик"
+echo "    (или infra/overlays/staging — тестовый контур в отдельном namespace)"

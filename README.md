@@ -38,12 +38,15 @@ project/
 
 ## Порядок разворачивания (вариант A: онлайн, managed/self-hosted k8s)
 
-1. Поднять k8s-кластер (минимум 3 узла) любым удобным способом (managed или self-hosted) —
-   вне скоупа этого репозитория.
+1. Поднять k8s-кластер (минимум 3 узла для профиля `ha`, меньше — для `standard`) любым
+   удобным способом (managed или self-hosted) — вне скоупа этого репозитория.
 2. `scripts/bootstrap.sh` — установить операторы: RabbitMQ Cluster Operator, Kong, kube-prometheus-stack.
 3. `kubectl apply -k infra/overlays/staging` — развернуть фундамент в staging.
 4. Убедиться, что RabbitMQ-кластер и Kong отвечают, дашборды Grafana доступны.
-5. `kubectl apply -k infra/overlays/prod` — после проверки на staging.
+5. `kubectl apply -k infra/overlays/standard` (несколько узлов, мягкая anti-affinity) или
+   `kubectl apply -k infra/overlays/ha` (3+ узла, гарантированный разъезд реплик) — после
+   проверки на staging. `ha` требует явно указать реальный StorageClass в самом overlay
+   перед применением — см. комментарий в `infra/overlays/ha/kustomization.yaml`.
 6. Дальше — по роадмапу: первый модуль-пилот (см. `docs/ROADMAP.md`).
 
 ## Порядок разворачивания (вариант B: с нуля, локально / офлайн-сервер без интернета)

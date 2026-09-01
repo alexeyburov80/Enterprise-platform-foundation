@@ -40,7 +40,23 @@ ingressController:
       memory: 256Mi
 
 proxy:
-  type: LoadBalancer   # TODO: заменить на ClusterIP + Ingress, если LB недоступен
+  # ⚠️ Phase 1 аудит, находка C6: раньше здесь стоял LoadBalancer — на
+  # bare-metal/k3s без облачного контроллера или MetalLB сервис вечно
+  # висит в <pending>, платформа снаружи недоступна, при этом все поды
+  # выглядят Running (ошибка не бросается в глаза). NodePort — безопасный
+  # универсальный дефолт, работающий без дополнительных компонентов на
+  # single/standard/ha профилях одинаково.
+  #
+  # Если кластер управляемый (EKS/GKE/AKS и т.п. с реальным облачным LB)
+  # или в кластере установлен MetalLB — переопределите на LoadBalancer
+  # через отдельный values-файл поверх этого (например
+  # `-f kong-values.yaml -f kong-values-cloud-lb.yaml`), не редактируя
+  # этот файл напрямую.
+  type: NodePort
+  http:
+    nodePort: 30080
+  tls:
+    nodePort: 30443
 
 admin:
   enabled: true
