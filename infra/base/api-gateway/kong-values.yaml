@@ -1,6 +1,6 @@
 # Helm values для чарта kong/kong (DB-less режим — конфигурация как код,
 # без отдельной БД для самого gateway; вся бизнес-логика — в сервисах за ним).
-# Устанавливается через scripts/bootstrap.sh:
+# Устанавливается через bootstrap.sh (scripts/lib/install-online-components.sh):
 #   helm install kong kong/kong -n platform -f infra/base/api-gateway/kong-values.yaml
 
 image:

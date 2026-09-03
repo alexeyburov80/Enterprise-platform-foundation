@@ -1,5 +1,5 @@
 # Требует предварительно установленный RabbitMQ Cluster Operator
-# (см. scripts/bootstrap.sh). Сам оператор создаёт StatefulSet, Service,
+# (см. bootstrap.sh). Сам оператор создаёт StatefulSet, Service,
 # PDB и секреты — вручную их не пишем (принцип 3 ТЗ: готовые компоненты).
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster

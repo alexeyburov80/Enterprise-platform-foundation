@@ -1,5 +1,5 @@
 # Helm values для чарта prometheus-community/kube-prometheus-stack.
-# Устанавливается через scripts/bootstrap.sh:
+# Устанавливается через bootstrap.sh (scripts/lib/install-online-components.sh):
 #   helm install monitoring prometheus-community/kube-prometheus-stack \
 #     -n platform -f infra/base/monitoring/kube-prometheus-stack-values.yaml
 

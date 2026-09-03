@@ -2,12 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Примечание: RabbitMQ Cluster Operator, Kong и kube-prometheus-stack
-# устанавливаются отдельно через Helm (scripts/bootstrap.sh) — они не
+# устанавливаются отдельно через Helm (bootstrap.sh) — они не
 # входят в этот kustomize-набор, т.к. это CRD/операторы, а не прикладные
 # ресурсы. Здесь — только то, что специфично для этого проекта.
 #
 # Версии всех Helm-релизов/операторов зафиксированы в release/manifest.yaml —
-# это единственный источник истины, scripts/bootstrap.sh и infra/airgap/scripts/*
+# это единственный источник истины, bootstrap.sh, scripts/lib/*.sh и infra/airgap/scripts/*
 # читают версии оттуда, а не хардкодят их здесь или в values-файлах.
 
 resources:
