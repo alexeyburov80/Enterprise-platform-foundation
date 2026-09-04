@@ -53,6 +53,14 @@ tooling:
   kustomize:
     version: "kustomize/v5.8.1"
     source: "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz"
+  kubeconform:
+    version: "v0.8.0"
+    source: "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz"
+  yamllint:
+    version: "1.38.0"    # pip
+  yq:
+    version: "v4.44.3"
+    source: "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64"
 
 # Kubernetes-операторы, устанавливаемые как raw-манифесты (не через Helm).
 operators:

@@ -50,8 +50,8 @@ k3s_install_online() {
 
   echo "==> Ждём готовности узла..."
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  local i
-  for i in $(seq 1 60); do
+  local _
+  for _ in $(seq 1 60); do
     if kubectl get nodes 2>/dev/null | grep -q Ready; then
       echo "    Узел готов."
       kubectl get nodes

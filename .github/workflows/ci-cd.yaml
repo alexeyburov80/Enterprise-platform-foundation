@@ -14,27 +14,79 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/mes-stub
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint (pinned per release/manifest.yaml)
+        run: pip install "yamllint==1.38.0"
+      - name: yamllint
+        run: yamllint -c .yamllint.yaml infra/ release/manifest.yaml .github/workflows/
+      - name: shellcheck
+        # shellcheck предустановлен на ubuntu-latest runner'ах GitHub Actions —
+        # отдельно не пинуем версию инструмента (в отличие от остального
+        # тулинга в этом файле), т.к. это предустановленный образ раннера,
+        # а не что-то, что мы сами скачиваем по URL.
+        run: |
+          shopt -s globstar
+          shellcheck -S warning **/*.sh
+
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Log in to registry
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push mes-stub image
+      - name: Build mes-stub image (local, for scanning on every event)
         uses: docker/build-push-action@v6
         with:
           context: infra/base/stub-service/app
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tag }}
+
+      - name: Scan image with Trivy
+        # Phase 1 аудит, находка H8: раньше сборка образа не сканировалась
+        # вообще. trivy-action запиновлен на конкретный commit SHA (не тег и
+        # не @master) — 19 марта 2026 был реальный supply-chain инцидент
+        # (GHSA-69fq-xp46-6x23): атакующий с скомпрометированными
+        # credentials force-push'нул 76 из 77 тегов trivy-action на вредоносные
+        # коммиты с инфостилером в entrypoint.sh. Тег v0.35.0 — единственный
+        # не затронутый, официально подтверждённый как safe и защищённый
+        # GitHub immutable releases. Пиним именно на его SHA, а не на тег —
+        # тег теоретически можно было бы создать заново с тем же именем на
+        # другой репозиторий в других обстоятельствах, SHA коммита — нет.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        with:
+          image-ref: ${{ steps.meta.outputs.tag }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: "CRITICAL,HIGH"
+
+      - name: Push mes-stub image
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/base/stub-service/app
+          push: true
+          tags: ${{ steps.meta.outputs.tag }}
 
   validate-manifests:
     runs-on: ubuntu-latest
@@ -43,7 +95,7 @@ jobs:
       - name: Install yq
         run: |
           # Версия yq зафиксирована здесь (не 'latest') — она нужна только чтобы
-          # прочитать pinned-версию kustomize из release/manifest.yaml на шаге ниже.
+          # прочитать pinned-версии инструментов из release/manifest.yaml на шагах ниже.
           sudo curl -fL "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64" \
             -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
@@ -55,17 +107,51 @@ jobs:
           curl -fL "$KUSTOMIZE_URL" -o /tmp/kustomize.tar.gz
           tar -xzf /tmp/kustomize.tar.gz -C /tmp
           sudo mv /tmp/kustomize /usr/local/bin/kustomize
+      - name: Install kubeconform (pinned via release/manifest.yaml)
+        run: |
+          KUBECONFORM_VERSION="$(yq eval '.tooling.kubeconform.version' release/manifest.yaml)"
+          KUBECONFORM_URL="$(yq eval '.tooling.kubeconform.source' release/manifest.yaml)"
+          echo "kubeconform ${KUBECONFORM_VERSION}"
+          curl -fL "$KUBECONFORM_URL" -o /tmp/kubeconform.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
       # Раньше здесь проверялись только overlays/staging и overlays/prod. Теперь
       # профили — single/standard/ha (см. Phase 3, инкремент 2) — валидируются
       # все, чтобы поломка в непроверенном overlay не проходила мимо CI незамеченной.
-      - name: Build staging manifests (dry validation)
-        run: kustomize build infra/overlays/staging > /tmp/staging.yaml
-      - name: Build single-node profile manifests (dry validation)
-        run: kustomize build infra/overlays/single > /tmp/single.yaml
-      - name: Build standard profile manifests (dry validation)
-        run: kustomize build infra/overlays/standard > /tmp/standard.yaml
-      - name: Build ha profile manifests (dry validation)
-        run: kustomize build infra/overlays/ha > /tmp/ha.yaml
+      #
+      # kubeconform со схемами из community CRD-каталога (Phase 1 аудит,
+      # находка H8) — проверяет не только "это синтаксически валидный YAML"
+      # (это уже делал `kustomize build` сам по себе), а "это валидный ресурс
+      # по OpenAPI-схеме своего kind/apiVersion", включая наши CRD
+      # (RabbitmqCluster и т.п.) через -schema-location с каталогом datreeio.
+      - name: Build + validate staging manifests
+        run: |
+          kustomize build infra/overlays/staging > /tmp/staging.yaml
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/staging.yaml
+      - name: Build + validate single-node profile manifests
+        run: |
+          kustomize build infra/overlays/single > /tmp/single.yaml
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/single.yaml
+      - name: Build + validate standard profile manifests
+        run: |
+          kustomize build infra/overlays/standard > /tmp/standard.yaml
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/standard.yaml
+      - name: Build + validate ha profile manifests
+        run: |
+          kustomize build infra/overlays/ha > /tmp/ha.yaml
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/ha.yaml
 
   # deploy-staging:
   #     needs: [build, validate-manifests]

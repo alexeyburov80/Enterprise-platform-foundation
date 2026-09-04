@@ -16,7 +16,6 @@
 # этот файл только определяет факты и печатает их.
 
 SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT_FOR_OS_DETECT="$(cd "$SCRIPT_LIB_DIR/../.." && pwd)"
 
 # shellcheck source=manifest.sh
 source "$SCRIPT_LIB_DIR/manifest.sh"
@@ -89,7 +88,7 @@ os_check_support() {
   fi
 
   manifest_require_yq
-  local count idx entry_id entry_versions entry_verified entry_notes match_id match_verified match_notes
+  local count idx entry_id entry_versions match_id match_verified match_notes
   count="$(yq eval '.os_support | length' "$MANIFEST_FILE")"
   match_id=""
   for ((idx = 0; idx < count; idx++)); do

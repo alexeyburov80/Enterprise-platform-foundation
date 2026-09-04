@@ -1,0 +1,24 @@
+# .yamllint.yaml
+#
+# Дефолтный набор правил yamllint слишком строгий для этого репозитория:
+# - line-length (80) — комментарии на русском языке регулярно длиннее,
+#   их читаемость важнее формального лимита;
+# - document-start — в репозитории сознательно не используется "---" в
+#   начале одиночных манифестов (не несёт смысла для файлов с одним документом);
+# - comments-indentation — часть комментариев внутри YAML-списков (patches:
+#   |- блоки) сдвинута по смыслу, а не по формальному уровню отступа.
+#
+# Проверено локально (Phase 3, инкремент 5): с этим конфигом — 0 ошибок на
+# всём infra/, при этом реальные ошибки (некорректный YAML, tab-отступы,
+# незакрытые кавычки, trailing spaces) по-прежнему ловятся.
+
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  comments-indentation: disable
+  truthy:
+    check-keys: false   # kustomize/Helm values используют true/false как обычные YAML-булевы, это ожидаемо
+  indentation:
+    spaces: consistent

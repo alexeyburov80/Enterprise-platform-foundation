@@ -46,7 +46,7 @@ systemctl enable --now k3s
 
 echo "==> Ждём готовности узла..."
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if kubectl get nodes 2>/dev/null | grep -q Ready; then
     echo "    Узел готов."
     break
