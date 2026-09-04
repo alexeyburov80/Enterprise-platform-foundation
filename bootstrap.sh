@@ -153,6 +153,13 @@ if [ "$OFFLINE" = "true" ]; then
     exit 1
   fi
   "$REPO_ROOT/infra/airgap/scripts/20-load-images.sh"
+  if [ "$TOPOLOGY" != "single" ]; then
+    # Phase 1 аудит, находка H5: `ctr images import` выше грузит образы
+    # ТОЛЬКО в containerd этого узла — на standard/ha нужен доступный с
+    # других узлов registry, иначе они не смогут стянуть образы офлайн.
+    echo "    Топология '${TOPOLOGY}' — поднимаю локальный registry для остальных узлов кластера"
+    "$REPO_ROOT/infra/airgap/scripts/25-start-registry.sh"
+  fi
   "$REPO_ROOT/infra/airgap/scripts/30-install-operators.sh"
   "$REPO_ROOT/infra/airgap/scripts/40-install-charts.sh"
 else

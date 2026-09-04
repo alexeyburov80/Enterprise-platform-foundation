@@ -95,7 +95,19 @@ images:
 
 # Стратегия offline-реестра образов (см. docs/AIRGAP.md после его появления).
 #   none  — прямой `k3s ctr images import` на единственном узле (профиль single)
-#   local — локальный registry:2 в кластере, все узлы читают через containerd
-#           mirror-конфиг (профили standard/ha)
+#   local — локальный registry в кластере (образ ниже), все узлы читают через
+#           containerd mirror-конфиг (профили standard/ha, см.
+#           infra/airgap/scripts/25-start-registry.sh)
 registry:
   mode: none
+  image: "registry:3.1.1"   # distribution/distribution — исправляет CVE-2026-35172, CVE-2026-33540
+  port: 5000
+
+tools_extra:
+  crane:
+    version: "v0.21.9"
+    source: "https://github.com/google/go-containerregistry/releases/download/v0.21.9/go-containerregistry_Linux_x86_64.tar.gz"
+    # crane — используется только infra/airgap/scripts/25-start-registry.sh
+    # для push образов из docker-archive tar в локальный registry (профили
+    # standard/ha + offline). Отдельная секция от tooling: выше, т.к. это не
+    # инструмент для локальной разработки/CI, а часть самого air-gap bundle.

@@ -22,11 +22,15 @@ RABBITMQ_OPERATOR_URL="$(manifest_get '.operators.rabbitmq_cluster_operator.mani
 TOPOLOGY_OPERATOR_VERSION="$(manifest_get '.operators.rabbitmq_messaging_topology_operator.version')"
 TOPOLOGY_OPERATOR_URL="$(manifest_get '.operators.rabbitmq_messaging_topology_operator.manifest_url_no_certmanager')"
 RABBITMQ_IMAGE="$(manifest_get '.images.rabbitmq')"
+REGISTRY_IMAGE="$(manifest_get '.registry.image')"
+CRANE_VERSION="$(manifest_get '.tools_extra.crane.version')"
+CRANE_URL="$(manifest_get '.tools_extra.crane.source')"
 ARCH="${ARCH:-amd64}"
 
 echo "==> Версии из release/manifest.yaml:"
 echo "    k3s=${K3S_VERSION} kubectl=${KUBECTL_VERSION} helm=${HELM_VERSION}"
 echo "    rabbitmq-cluster-operator=${RABBITMQ_OPERATOR_VERSION} messaging-topology-operator=${TOPOLOGY_OPERATOR_VERSION}"
+echo "    registry-image=${REGISTRY_IMAGE} crane=${CRANE_VERSION}"
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$WORKDIR/airgap-bundle"
@@ -40,7 +44,7 @@ if ! command -v skopeo >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> [1/6] Бинарники: k3s, kubectl, helm"
+echo "==> [1/6] Бинарники: k3s, kubectl, helm, crane"
 curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION//+/%2B}/k3s" \
   -o "$BUNDLE/bin/k3s"
 curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION//+/%2B}/k3s-airgap-images-${ARCH}.tar.gz" \
@@ -51,6 +55,14 @@ curl -fL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
   -o /tmp/helm.tar.gz
 tar -xzf /tmp/helm.tar.gz -C /tmp
 cp "/tmp/linux-${ARCH}/helm" "$BUNDLE/bin/helm"
+# crane — только для infra/airgap/scripts/25-start-registry.sh (профили
+# standard/ha: пушит образы из bundle в локальный registry). Для профиля
+# single не используется вообще, но кладём в bundle всегда — он маленький
+# (один статический бинарник), а разница online/offline/профиль решается
+# уже на целевом сервере, не на этапе сборки bundle.
+curl -fL "$CRANE_URL" -o /tmp/crane.tar.gz
+tar -xzf /tmp/crane.tar.gz -C /tmp crane
+cp /tmp/crane "$BUNDLE/bin/crane"
 chmod +x "$BUNDLE"/bin/*
 export PATH="$BUNDLE/bin:$PATH"   # чтобы шаги ниже использовали скачанные helm/kubectl, а не системные
 
@@ -84,6 +96,11 @@ helm template monitoring "$BUNDLE"/charts/kube-prometheus-stack-*.tgz -f "$WORKD
 grep -oP '(?<=image: ).*' "$BUNDLE/manifests/cluster-operator.yml" | tr -d '"' >> "$IMAGES_FILE" || true
 grep -oP '(?<=image: ).*' "$BUNDLE/manifests/messaging-topology-operator.yaml" | tr -d '"' >> "$IMAGES_FILE" || true
 echo "$RABBITMQ_IMAGE" >> "$IMAGES_FILE"
+echo "$REGISTRY_IMAGE" >> "$IMAGES_FILE"
+# registry-образ добавлен в общий список специально (не отдельным
+# curl/skopeo-вызовом) — он проходит тот же путь скачивания без
+# attestation-манифестов, что и остальные образы (см. комментарий к шагу
+# [6/6] ниже), это уже отлаженный путь, дублировать его не нужно.
 
 sort -u -o "$IMAGES_FILE" "$IMAGES_FILE"
 echo "    Найдено образов: $(wc -l < "$IMAGES_FILE")"
