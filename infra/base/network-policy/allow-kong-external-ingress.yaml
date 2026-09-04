@@ -1,0 +1,27 @@
+# Внешний трафик (через NodePort, см. infra/base/api-gateway/kong-values.yaml)
+# приходит на под Kong не от конкретного пода-источника, а "снаружи" —
+# NetworkPolicy не умеет матчить "снаружи кластера" через podSelector/
+# namespaceSelector, поэтому ingress-правило без "from" (разрешено НЕ то же
+# самое, что from: [] — пустой список означает "ни от кого", отсутствие
+# ключа from вовсе — "от кого угодно").
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kong-external-ingress
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kong
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000    # proxy HTTP
+        - protocol: TCP
+          port: 8443    # proxy HTTPS
+      # ⚠️ Порты — дефолтные для Helm-чарта kong/kong (см. release/manifest.yaml
+      # charts.kong.version). Если после `helm template` они отличаются —
+      # поправьте здесь же, значения не выводятся динамически специально
+      # (простота отладки важнее, для этого небольшого файла оправдано).

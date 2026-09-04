@@ -18,3 +18,8 @@ resources:
   - monitoring/rabbitmq-servicemonitor.yaml
   - monitoring/alerts/rabbitmq-alerts.yaml
   - stub-service/deployment.yaml
+  - network-policy/default-deny.yaml
+  - network-policy/allow-kong-external-ingress.yaml
+  - network-policy/allow-kong-to-k8s-api.yaml
+  - network-policy/allow-app-to-rabbitmq.yaml
+  - network-policy/allow-monitoring-scrape.yaml

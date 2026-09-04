@@ -17,7 +17,13 @@
 
 grafana:
   enabled: true
-  adminPassword: "CHANGE_ME"
+  # См. infra/base/monitoring/kube-prometheus-stack-values.yaml — тот же
+  # фикс H3, секрет создаётся infra/airgap/scripts/40-install-charts.sh
+  # через scripts/lib/secrets.sh перед этим helm install.
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
   image:
     pullPolicy: IfNotPresent
   persistence:

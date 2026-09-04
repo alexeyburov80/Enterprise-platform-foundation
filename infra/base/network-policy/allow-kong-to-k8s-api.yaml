@@ -1,0 +1,34 @@
+# Kong ставится с `ingressController.enabled: true` (см. kong-values.yaml) —
+# встроенный ingress-controller следит за Ingress/CRD через k8s API, а не
+# через обычный pod-to-pod трафик. default-deny-all блокирует и это
+# (egress), если явно не разрешить — легко упустить при написании
+# NetworkPolicy "по интуиции" (кажется, что egress нужен только к
+# приложениям), но без этого правила Kong ingress-controller перестанет
+# видеть новые/изменённые Ingress-ресурсы.
+#
+# ⚠️ ClusterIP сервиса "kubernetes" в namespace default НЕ имеет подов за
+# собой (Endpoints указывают прямо на IP узла control-plane) — поэтому
+# заматчить его через podSelector нельзя, только через ipBlock с конкретным
+# адресом. 10.43.0.1 — первый адрес дефолтного k3s service-cidr
+# (10.43.0.0/16), подтверждено официальной документацией k3s. Если ваш
+# кластер (особенно профиль existing / собственный service-cidr) использует
+# другой диапазон — проверьте `kubectl get svc kubernetes -n default` и
+# поправьте адрес ниже.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kong-to-k8s-api
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kong
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443

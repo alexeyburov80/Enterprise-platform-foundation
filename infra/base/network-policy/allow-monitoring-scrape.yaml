@@ -1,0 +1,53 @@
+# kube-prometheus-stack ставится в тот же namespace "platform" (см.
+# scripts/lib/install-online-components.sh / infra/airgap/scripts/40-install-charts.sh),
+# поэтому достаточно intra-namespace правил — без namespaceSelector.
+#
+# Метка пода Prometheus (app.kubernetes.io/name: prometheus) — дефолт чарта
+# kube-prometheus-stack (proверено по факту: Prometheus Operator генерирует
+# StatefulSet/под с этой меткой для CRD Prometheus). Если вы переопределяли
+# nameOverride/fullnameOverride в values — поправьте селектор здесь же.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape-rabbitmq
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 15692   # порт "prometheus" из infra/base/monitoring/rabbitmq-servicemonitor.yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-egress-scrape
+  namespace: platform
+spec:
+  # Egress-сторона того же правила: default-deny блокирует обе стороны,
+  # scrape — это Prometheus, инициирующий соединение К target'ам.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: platform-rabbitmq
+      ports:
+        - protocol: TCP
+          port: 15692
+    # Kong пока не публикует метрики (нет prometheus-плагина в
+    # kong-values.yaml) — правило для Kong добавляется вместе с ним, когда
+    # он появится, по этому же шаблону.

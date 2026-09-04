@@ -22,6 +22,17 @@ spec:
         app.kubernetes.io/name: mes-stub
         app.kubernetes.io/component: mes
     spec:
+      # Phase 1 аудит, находка H6: раньше securityContext не был задан вообще —
+      # Dockerfile делает `USER node`, но без явного securityContext k8s не
+      # гарантирует это на уровне пода (например, если кто-то соберёт образ без
+      # USER node, под тихо запустится от root).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000        # UID пользователя "node" в базовом образе node:20-alpine
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 15   # приложение без открытых соединений/очередей на удержание — быстрый, но не мгновенный SIGTERM->SIGKILL
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -38,6 +49,11 @@ spec:
           # сам файл руками менять не нужно.
           image: mes-stub:offline
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 3000
           env:
@@ -52,6 +68,21 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+              # readOnlyRootFilesystem: true требует отдельный писабельный том
+              # под /tmp — Node.js и часть npm-пакетов ожидают, что туда можно
+              # писать, даже если само приложение (server.js) этого не делает.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            failureThreshold: 30
+            periodSeconds: 2
+            # до 60с на холодный старт (npm install уже в образе, но не помешает
+            # запас) — пока startupProbe не зелёный, liveness/readiness не выполняются
+            # вообще, что не даёт под'у быть убитым живучестью раньше времени.
           readinessProbe:
             httpGet:
               path: /healthz
@@ -62,6 +93,9 @@ spec:
               path: /healthz
               port: 3000
             initialDelaySeconds: 10
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

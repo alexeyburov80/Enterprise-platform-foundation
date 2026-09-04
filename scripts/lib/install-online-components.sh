@@ -13,8 +13,10 @@
 #     ДО вызова этой функции, а не предполагается неявно.
 #
 # Использование:
+# Использование:
 #   source scripts/lib/manifest.sh
 #   source scripts/lib/rabbitmq-webhook-certs.sh
+#   source scripts/lib/secrets.sh
 #   source scripts/lib/install-online-components.sh
 #   install_online_components "$REPO_ROOT"
 
@@ -41,6 +43,7 @@ install_online_components() {
     -n platform --create-namespace -f "$repo_root/infra/base/api-gateway/kong-values.yaml"
 
   echo "==> kube-prometheus-stack ${prometheus_chart_version} (Helm)"
+  ensure_grafana_admin_secret platform
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo update >/dev/null
   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \

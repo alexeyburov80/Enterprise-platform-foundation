@@ -158,6 +158,8 @@ if [ "$OFFLINE" = "true" ]; then
 else
   # shellcheck source=scripts/lib/rabbitmq-webhook-certs.sh
   source "$REPO_ROOT/scripts/lib/rabbitmq-webhook-certs.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "$REPO_ROOT/scripts/lib/secrets.sh"
   # shellcheck source=scripts/lib/install-online-components.sh
   source "$REPO_ROOT/scripts/lib/install-online-components.sh"
   install_online_components "$REPO_ROOT"

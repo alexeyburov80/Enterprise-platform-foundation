@@ -5,6 +5,9 @@ export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$HERE/airgap-bundle"
 
+# shellcheck source=../../../scripts/lib/secrets.sh
+source "$HERE/../../scripts/lib/secrets.sh"
+
 kubectl get namespace platform >/dev/null 2>&1 || kubectl apply -f "$HERE/../base/namespace.yaml"
 
 echo "==> Приводим уже существующие Kong CRD (если остались от прошлых попыток) под ownership Helm"
@@ -36,6 +39,7 @@ if ! helm upgrade --install kong "$BUNDLE"/charts/kong-*.tgz \
 fi
 
 echo "==> kube-prometheus-stack (из локального .tgz)"
+ensure_grafana_admin_secret platform
 if ! helm upgrade --install monitoring "$BUNDLE"/charts/kube-prometheus-stack-*.tgz \
     -n platform -f "$HERE/values/kube-prometheus-stack-offline-values.yaml" --wait --timeout 10m; then
   echo "!! Установка kube-prometheus-stack не завершилась вовремя — вот что с подами:"

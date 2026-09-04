@@ -1,0 +1,52 @@
+# Phase 1 аудит, находка H2: раньше в namespace "platform" не было НИ ОДНОЙ
+# NetworkPolicy — любой под из любого namespace кластера мог достучаться до
+# RabbitMQ/Kong admin API без ограничений.
+#
+# ⚠️ Важно: NetworkPolicy — это ТОЛЬКО объект API, реально его исполняет CNI.
+# k3s по умолчанию использует Flannel, который САМ ПО СЕБЕ NetworkPolicy не
+# умеет — НО k3s из коробки поставляется со встроенным контроллером на базе
+# kube-router, который эти политики реально применяет поверх Flannel (если
+# явно не отключён флагом `--disable-network-policy` при установке k3s —
+# наши scripts/lib/k3s-install-online.sh и infra/airgap/scripts/10-install-k3s.sh
+# этот флаг не передают, то есть enforcement включён). На кластере, не
+# основанном на k3s (профиль existing), обязательно проверьте, что ваш CNI
+# поддерживает NetworkPolicy (Calico/Cilium/kube-router — да, чистый Flannel
+# без доп. контроллера — нет) — иначе эти манифесты применятся без ошибки,
+# но не будут ничего блокировать (см. docs/SECURITY.md).
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  # Пустые ingress/egress (не заданы вовсе) => весь трафик по умолчанию
+  # запрещён для всех подов namespace. Конкретные разрешения — в соседних
+  # allow-*.yaml файлах этой же директории.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: platform
+spec:
+  # Без этого правила default-deny-all выше сломает вообще всё: ни один под
+  # не сможет резолвить даже имена Service внутри своего же namespace.
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

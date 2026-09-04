@@ -5,7 +5,15 @@
 
 grafana:
   enabled: true
-  adminPassword: "CHANGE_ME"   # TODO: вынести в Secret / внешний секрет-менеджер
+  # Phase 1 аудит, находка H3: раньше здесь был "adminPassword: CHANGE_ME"
+  # открытым текстом в git. Секрет теперь создаётся отдельно (не хранится в
+  # репозитории) — см. scripts/lib/secrets.sh, вызывается из
+  # scripts/lib/install-online-components.sh и infra/airgap/scripts/40-install-charts.sh
+  # ДО этого helm install (иначе под Grafana не поднимется — секрета ещё нет).
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
   persistence:
     enabled: true
     size: 5Gi
