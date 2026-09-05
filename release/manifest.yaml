@@ -34,7 +34,7 @@ os_support:
       среды (ЗПС/PARSEC) перед установкой — см. docs/ASTRA_LINUX.md.
   - id: ubuntu
     name: "Ubuntu Server"
-    versions: ["22.04", "24.04"]
+    versions: ["22.04", "24.04", "26.04"]
     verified: false
     notes: "Ожидается полная совместимость (стандартный путь k3s), но не прогонялось в этом проекте."
   - id: debian
