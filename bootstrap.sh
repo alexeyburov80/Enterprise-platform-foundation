@@ -143,18 +143,35 @@ if [ "$PROFILE" = "existing" ]; then
   echo "    profile=existing — k3s не устанавливается, используется уже настроенный kubectl-контекст"
   export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 else
+  # Проверяем и обычный $KUBECONFIG/~/.kube/config (кластер, поднятый не
+  # этим installer'ом), И штатный путь k3s (/etc/rancher/k3s/k3s.yaml) —
+  # раньше проверялся только первый вариант, из-за чего повторный запуск
+  # ПОСЛЕ уже успешной установки k3s этим же bootstrap.sh не находил его
+  # (обычный `kubectl` без KUBECONFIG смотрит на localhost:8080, которого
+  # никогда не существует — k3s слушает на :6443) и пытался ставить k3s
+  # заново поверх уже работающего.
+  #
+  # KUBECONFIG принудительно переключается на k3s.yaml ТОЛЬКО в ветках,
+  # где речь реально идёт о k3s — если уже была обнаружена рабочая связка
+  # через обычный $KUBECONFIG/~/.kube/config (не обязательно k3s), она
+  # используется как есть и не перезатирается (это тоже был баг: раньше
+  # безусловный export ниже по этому блоку срабатывал в любом случае).
+  K3S_KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
   if kubectl get nodes >/dev/null 2>&1; then
     echo "    ⚠ kubectl уже видит работающий кластер — пропускаю установку k3s."
     echo "      Если это не тот кластер, который вы ожидали, прервите (Ctrl+C) и"
     echo "      разберитесь вручную, либо используйте --profile existing."
+  elif [ -r "$K3S_KUBECONFIG" ] && KUBECONFIG="$K3S_KUBECONFIG" kubectl get nodes >/dev/null 2>&1; then
+    echo "    ⚠ Обнаружен уже работающий k3s ($K3S_KUBECONFIG) — пропускаю установку."
+    export KUBECONFIG="$K3S_KUBECONFIG"
   elif [ "$OFFLINE" = "true" ]; then
     "$REPO_ROOT/infra/airgap/scripts/10-install-k3s.sh"
+    export KUBECONFIG="$K3S_KUBECONFIG"
   else
     # shellcheck source=scripts/lib/k3s-install-online.sh
     source "$REPO_ROOT/scripts/lib/k3s-install-online.sh"
-    k3s_install_online
+    k3s_install_online   # сама экспортирует KUBECONFIG=/etc/rancher/k3s/k3s.yaml при успехе
   fi
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 fi
 echo
 
