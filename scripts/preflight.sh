@@ -68,13 +68,24 @@ fi
 # ── 2. ОС и совместимость ──────────────────────────────────────────────
 if os_detect; then
   echo "-- Определение ОС:"
-  support_status="$(os_check_support)"
+  # Явный "|| support_status=error" НЕ косметика: без него, если
+  # os_check_support вернёт ненулевой код (например, yq недоступен и
+  # автоустановка не удалась — нет интернета) — под `set -e` это молча
+  # оборвёт ВЕСЬ preflight.sh прямо здесь, без единого PASS/FAIL в отчёте.
+  # Именно так и произошло при первом реальном прогоне этого скрипта живым
+  # пользователем (см. историю коммитов) — исправлено тем, что теперь любой
+  # исход этой проверки укладывается в обычный WARN/FAIL, а не в аварийную
+  # смерть скрипта.
+  support_status="$(os_check_support)" || support_status="error"
   case "$support_status" in
     verified)
       add_result PASS "os" "${OS_PRETTY_NAME} — проверенная версия (release/manifest.yaml)"
       ;;
     unverified)
       add_result WARN "os" "${OS_PRETTY_NAME} — версия заявлена в manifest, но не подтверждена реальным прогоном (verified: false)"
+      ;;
+    error)
+      add_result WARN "os" "не удалось сверить ОС с release/manifest.yaml (нужен yq, автоустановка не удалась — см. сообщение выше). Продолжаю без этой проверки"
       ;;
     unknown|*)
       add_result WARN "os" "${OS_PRETTY_NAME:-неизвестная ОС} — не значится в release/manifest.yaml вообще"

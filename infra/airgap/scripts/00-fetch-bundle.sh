@@ -25,12 +25,14 @@ RABBITMQ_IMAGE="$(manifest_get '.images.rabbitmq')"
 REGISTRY_IMAGE="$(manifest_get '.registry.image')"
 CRANE_VERSION="$(manifest_get '.tools_extra.crane.version')"
 CRANE_URL="$(manifest_get '.tools_extra.crane.source')"
+YQ_VERSION="$(manifest_get '.tooling.yq.version')"
+YQ_URL="$(manifest_get '.tooling.yq.source')"
 ARCH="${ARCH:-amd64}"
 
 echo "==> Версии из release/manifest.yaml:"
 echo "    k3s=${K3S_VERSION} kubectl=${KUBECTL_VERSION} helm=${HELM_VERSION}"
 echo "    rabbitmq-cluster-operator=${RABBITMQ_OPERATOR_VERSION} messaging-topology-operator=${TOPOLOGY_OPERATOR_VERSION}"
-echo "    registry-image=${REGISTRY_IMAGE} crane=${CRANE_VERSION}"
+echo "    registry-image=${REGISTRY_IMAGE} crane=${CRANE_VERSION} yq=${YQ_VERSION}"
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$WORKDIR/airgap-bundle"
@@ -44,7 +46,7 @@ if ! command -v skopeo >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> [1/6] Бинарники: k3s, kubectl, helm, crane"
+echo "==> [1/6] Бинарники: k3s, kubectl, helm, crane, yq"
 curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION//+/%2B}/k3s" \
   -o "$BUNDLE/bin/k3s"
 curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION//+/%2B}/k3s-airgap-images-${ARCH}.tar.gz" \
@@ -63,6 +65,12 @@ cp "/tmp/linux-${ARCH}/helm" "$BUNDLE/bin/helm"
 curl -fL "$CRANE_URL" -o /tmp/crane.tar.gz
 tar -xzf /tmp/crane.tar.gz -C /tmp crane
 cp /tmp/crane "$BUNDLE/bin/crane"
+# yq — найденный реальным прогоном пробел: scripts/lib/manifest.sh умеет
+# САМ поставить yq по сети, если его нет, но на настоящем air-gap сервере
+# сети нет по определению — значит yq должен физически лежать в bundle,
+# а не надеяться на автоустановку. bootstrap.sh кладёт "$BUNDLE_DIR/bin"
+# в PATH до первого же обращения к release/manifest.yaml (см. этот файл).
+curl -fL "$YQ_URL" -o "$BUNDLE/bin/yq"
 chmod +x "$BUNDLE"/bin/*
 export PATH="$BUNDLE/bin:$PATH"   # чтобы шаги ниже использовали скачанные helm/kubectl, а не системные
 

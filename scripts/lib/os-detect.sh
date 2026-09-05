@@ -87,7 +87,10 @@ os_check_support() {
     return 1
   fi
 
-  manifest_require_yq
+  if ! manifest_require_yq; then
+    echo "error"
+    return 1
+  fi
   local count idx entry_id entry_versions match_id match_verified match_notes
   count="$(yq eval '.os_support | length' "$MANIFEST_FILE")"
   match_id=""

@@ -82,6 +82,29 @@ echo " profile=${PROFILE} topology=${TOPOLOGY} offline=${OFFLINE}"
 echo "══════════════════════════════════════════════════════════════════"
 echo
 
+# Бандл распаковывается ЗДЕСЬ, до Шага 1, а не на Шаге 3, как было раньше —
+# нашли реальным прогоном: Шаг 1 (определение ОС) уже вызывает manifest_get
+# (нужен yq), а на настоящем air-gap сервере без интернета yq неоткуда
+# взять, кроме как из самого бандла (scripts/lib/manifest.sh умеет
+# автоматически ставить yq по сети, но офлайн так и должно быть невозможно —
+# это единственный компонент, который специально не пытается прыгнуть через
+# --offline). Распаковывая бандл первым делом и сразу добавляя его bin/ в
+# PATH, любой manifest_get дальше по скрипту находит yq локально.
+if [ "$OFFLINE" = "true" ]; then
+  BUNDLE_DIR="$REPO_ROOT/infra/airgap/airgap-bundle"
+  if [ -n "$BUNDLE_PATH" ]; then
+    echo "Распаковываю бандл: $BUNDLE_PATH"
+    mkdir -p "$REPO_ROOT/infra/airgap"
+    tar -xzf "$BUNDLE_PATH" -C "$REPO_ROOT/infra/airgap"
+    echo
+  fi
+  if [ ! -d "$BUNDLE_DIR" ]; then
+    echo "Не найден распакованный бандл в $BUNDLE_DIR и не передан --bundle. См. docs/AIRGAP.md." >&2
+    exit 1
+  fi
+  export PATH="$BUNDLE_DIR/bin:$PATH"
+fi
+
 # shellcheck source=scripts/lib/manifest.sh
 source "$REPO_ROOT/scripts/lib/manifest.sh"
 # shellcheck source=scripts/lib/os-detect.sh
@@ -125,16 +148,6 @@ else
     echo "      Если это не тот кластер, который вы ожидали, прервите (Ctrl+C) и"
     echo "      разберитесь вручную, либо используйте --profile existing."
   elif [ "$OFFLINE" = "true" ]; then
-    BUNDLE_DIR="$REPO_ROOT/infra/airgap/airgap-bundle"
-    if [ -n "$BUNDLE_PATH" ]; then
-      echo "    Распаковываю бандл: $BUNDLE_PATH"
-      mkdir -p "$REPO_ROOT/infra/airgap"
-      tar -xzf "$BUNDLE_PATH" -C "$REPO_ROOT/infra/airgap"
-    fi
-    if [ ! -d "$BUNDLE_DIR" ]; then
-      echo "Не найден распакованный бандл в $BUNDLE_DIR и не передан --bundle. См. infra/airgap/README.md." >&2
-      exit 1
-    fi
     "$REPO_ROOT/infra/airgap/scripts/10-install-k3s.sh"
   else
     # shellcheck source=scripts/lib/k3s-install-online.sh
@@ -147,11 +160,6 @@ echo
 
 echo "── Шаг 4/6: RabbitMQ-операторы + Kong + kube-prometheus-stack ──"
 if [ "$OFFLINE" = "true" ]; then
-  BUNDLE_DIR="$REPO_ROOT/infra/airgap/airgap-bundle"
-  if [ ! -d "$BUNDLE_DIR" ]; then
-    echo "Не найден распакованный бандл в $BUNDLE_DIR." >&2
-    exit 1
-  fi
   "$REPO_ROOT/infra/airgap/scripts/20-load-images.sh"
   if [ "$TOPOLOGY" != "single" ]; then
     # Phase 1 аудит, находка H5: `ctr images import` выше грузит образы

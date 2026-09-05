@@ -13,28 +13,77 @@
 MANIFEST_FILE="${MANIFEST_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/release/manifest.yaml}"
 
 manifest_require_yq() {
-  if ! command -v yq >/dev/null 2>&1; then
-    echo "Нужен yq (mikefarah/yq, версия 4.x) для чтения release/manifest.yaml." >&2
-    echo "Установка: см. https://github.com/mikefarah/yq#install — например:" >&2
-    echo "    sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq" >&2
-    echo "(Да, здесь тоже 'latest' — но это одноразовая установка локального инструмента" >&2
-    echo "оператором вручную, а не то, что тянет сам installer при каждом запуске.)" >&2
-    exit 1
+  if command -v yq >/dev/null 2>&1; then
+    return 0
   fi
+
+  # Баг, найденный реальным прогоном (не в песочнице): раньше здесь был
+  # просто `exit 1` с инструкцией поставить yq вручную. Из-за классической
+  # ловушки bash — `var="$(func)"` под `set -e` роняет весь ВЫЗЫВАЮЩИЙ
+  # скрипт молча, без единого PASS/FAIL в отчёте preflight, — это выглядело
+  # как необъяснимый мгновенный краш сразу после определения ОС, а не как
+  # понятная ошибка "нужен yq". Теперь вместо ручной установки — автоматическая:
+  # yq нужен только как локальный инструмент чтения release/manifest.yaml,
+  # ставить его руками каждому, кто клонирует репозиторий, не должно быть
+  # обязательным шагом онбординга.
+  echo "yq не найден — устанавливаю (одна из немногих вещей в этом репозитории," >&2
+  echo "которая тянется по фиксированной версии, но не из release/manifest.yaml —" >&2
+  echo "у самого yq нет способа прочитать версию yq для самого себя)." >&2
+
+  local yq_version="v4.44.3"   # тот же пин, что и tooling.yq.version в release/manifest.yaml —
+                                 # продублирован здесь намеренно (см. комментарий выше)
+  local yq_url="https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64"
+  local dest="/usr/local/bin/yq"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl тоже не найден — не могу автоматически поставить yq." >&2
+    echo "Поставьте вручную: $yq_url -> $dest (chmod +x), затем повторите запуск." >&2
+    return 1
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  if ! curl -fsSL --max-time 15 "$yq_url" -o "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    echo "Не удалось скачать yq с $yq_url (нет интернета? см. --offline в docs/AIRGAP.md" >&2
+    echo "про то, что yq на офлайн-сервере должен быть предустановлен заранее)." >&2
+    echo "Поставьте вручную: $yq_url -> $dest (chmod +x), затем повторите запуск." >&2
+    return 1
+  fi
+
+  chmod +x "$tmp"
+  if [ -w "$(dirname "$dest")" ]; then
+    mv "$tmp" "$dest"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo mv "$tmp" "$dest"
+  else
+    echo "Скачал yq во временный файл $tmp, но нет прав записать в $dest и нет sudo." >&2
+    echo "Переместите вручную: sudo mv $tmp $dest && sudo chmod +x $dest" >&2
+    return 1
+  fi
+
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "yq скачан в $dest, но почему-то всё ещё не находится в PATH — проверьте \$PATH." >&2
+    return 1
+  fi
+  echo "yq ${yq_version} установлен в $dest." >&2
+  return 0
 }
 
 manifest_get() {
   local query="$1"
-  manifest_require_yq
+  if ! manifest_require_yq; then
+    return 1
+  fi
   if [ ! -f "$MANIFEST_FILE" ]; then
     echo "release/manifest.yaml не найден по пути: $MANIFEST_FILE" >&2
-    exit 1
+    return 1
   fi
   local value
   value="$(yq eval "$query" "$MANIFEST_FILE")"
   if [ -z "$value" ] || [ "$value" = "null" ]; then
     echo "Поле '$query' не найдено или пустое в $MANIFEST_FILE" >&2
-    exit 1
+    return 1
   fi
   echo "$value"
 }

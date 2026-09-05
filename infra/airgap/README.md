@@ -32,8 +32,10 @@ join) этим репозиторием пока НЕ автоматизиров
 
 ```
 airgap-bundle/
-├── bin/            # k3s, kubectl, helm, crane — статические бинарники
-│                    # (crane — только для 25-start-registry.sh, профили standard/ha)
+├── bin/            # k3s, kubectl, helm, crane, yq — статические бинарники
+│                    # (crane — только для 25-start-registry.sh, профили standard/ha;
+│                    #  yq — нужен bootstrap.sh/preflight.sh с самого первого шага,
+│                    #  без сети на целевом сервере взять его больше неоткуда)
 ├── images/
 │   ├── image-list.txt   # список образов, извлечённый из чартов/манифестов
 │   │                     # (включает и сам образ локального registry — registry:3.1.1)
