@@ -7,24 +7,22 @@ CI/CD и пример модуля-заглушки, демонстрирующ�
 
 ```
 project/
-├── docs/
-│   └── ROADMAP.md              # роадмап по разделу 6 ТЗ (фазы, задачи, оценки)
-├── infra/
-│   ├── base/
-│   │   ├── namespace.yaml
-│   │   ├── rabbitmq/           # RabbitMQ-кластер (RabbitMQ Cluster Operator) + quorum queues
-│   │   ├── api-gateway/        # Kong (declarative, DB-less) — скелет без бизнес-логики
-│   │   ├── monitoring/         # values для kube-prometheus-stack + свои алерты
-│   │   ├── stub-service/       # пример заглушки-модуля (MES-stub) с Dockerfile
-│   │   └── kustomization.yaml
-```
-project/
 ├── bootstrap.sh                 # единая точка входа: preflight → k3s (если нужно) →
 │                                 # операторы/чарты → манифесты платформы, см. `./bootstrap.sh --help`
 ├── release/
 │   └── manifest.yaml            # единственный источник версий всех внешних компонентов
 ├── docs/
-│   └── ROADMAP.md               # роадмап по разделу 6 ТЗ (фазы, задачи, оценки)
+│   ├── INSTALL.md                # с чего начать — выбор профиля, все флаги bootstrap.sh
+│   ├── ASTRA_LINUX.md            # статус поддержки (честно: не подтверждено прогоном), ЗПС
+│   ├── AIRGAP.md                 # установка без интернета, включая registry.local
+│   ├── SINGLE_NODE.md            # профиль single
+│   ├── HA.md                     # профили standard/ha, включая ручной join узлов
+│   ├── EXISTING_KUBERNETES.md    # профиль existing (managed/свой k8s)
+│   ├── UPGRADE.md                # апгрейд компонент за компонентом, откат
+│   ├── TROUBLESHOOTING.md        # известные проблемы и как их узнать
+│   ├── SECURITY.md               # модель угроз: что покрыто, что нет
+│   ├── RELEASE.md                # release/manifest.yaml, что проверяет CI
+│   └── ROADMAP.md                # роадмап по разделу 6 ТЗ (фазы, задачи, оценки)
 ├── scripts/
 │   ├── preflight.sh             # проверки системы ДО установки (можно и отдельно)
 │   ├── diagnose.sh              # сбор диагностики уже установленной платформы
@@ -58,6 +56,17 @@ project/
 
 Реальные модули (SCADA/MES/ERP/CRM/отчётность) и миграция Oracle→PostgreSQL — не входят в
 этот стартовый пакет, разворачиваются поверх фундамента по мере готовности (см. `docs/ROADMAP.md`).
+
+## Документация
+
+Начните с [`docs/INSTALL.md`](./docs/INSTALL.md) — выбор профиля и все флаги
+`bootstrap.sh`. Дальше по ситуации: [`SINGLE_NODE.md`](./docs/SINGLE_NODE.md),
+[`HA.md`](./docs/HA.md), [`EXISTING_KUBERNETES.md`](./docs/EXISTING_KUBERNETES.md),
+[`AIRGAP.md`](./docs/AIRGAP.md) (сервер без интернета),
+[`ASTRA_LINUX.md`](./docs/ASTRA_LINUX.md) (если у вас Astra Linux — статус
+поддержки там указан честно, включая то, что не проверено). Дальше —
+[`UPGRADE.md`](./docs/UPGRADE.md), [`TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md),
+[`SECURITY.md`](./docs/SECURITY.md), [`RELEASE.md`](./docs/RELEASE.md).
 
 ## Порядок разворачивания
 
@@ -104,7 +113,11 @@ sudo ./bootstrap.sh --profile single --offline --bundle infra/airgap/airgap-bund
 
 - Использован RabbitMQ Cluster Operator и Kong Ingress Controller как готовые open-source
   компоненты (принцип 3 ТЗ — не пишем своё там, где не нужна кастомная логика).
-- StorageClass, конкретный managed-провайдер k8s и точные ресурсные лимиты — placeholder-значения,
-  требуют подстройки под реальную инфраструктуру.
+- StorageClass: `single`/`standard` используют рабочий дефолт `local-path` (k3s
+  из коробки); `ha` — нет, там нужно явно указать реальный StorageClass перед
+  применением (см. [`docs/HA.md`](./docs/HA.md)). Управляемый провайдер k8s и
+  точные ресурсные лимиты (`ResourceQuota` в `infra/base/namespace.yaml`,
+  сейчас единая для всех профилей) — по-прежнему требуют подстройки под
+  реальную инфраструктуру.
 - PostgreSQL-кластер (Patroni) и сама шина CDC (Debezium) в этот пакет пока не входят —
   добавляются на старте раздела 6.3 (миграция первой БД).
