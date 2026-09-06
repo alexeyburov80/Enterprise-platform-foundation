@@ -13,16 +13,53 @@
 #     ДО вызова этой функции, а не предполагается неявно.
 #
 # Использование:
-# Использование:
 #   source scripts/lib/manifest.sh
 #   source scripts/lib/rabbitmq-webhook-certs.sh
 #   source scripts/lib/secrets.sh
 #   source scripts/lib/install-online-components.sh
 #   install_online_components "$REPO_ROOT"
 
+# Найдено реальным прогоном (не в песочнице): этот файл всегда предполагал,
+# что helm уже стоит на системе, и никогда не проверял/не ставил его сам —
+# в отличие от offline-пути (helm едет в самом bundle) и от yq (автоустановка
+# добавлена отдельным фиксом ранее). Тот же класс проблемы, тот же фикс.
+ensure_helm() {
+  if command -v helm >/dev/null 2>&1; then
+    return 0
+  fi
+  local helm_version arch dest tmp
+  helm_version="$(manifest_get '.tooling.helm.version')"
+  arch="amd64"
+  dest="/usr/local/bin/helm"
+  echo "helm не найден — устанавливаю ${helm_version} (release/manifest.yaml)." >&2
+  tmp="$(mktemp -d)"
+  if ! curl -fsSL --max-time 30 "https://get.helm.sh/helm-${helm_version}-linux-${arch}.tar.gz" -o "$tmp/helm.tar.gz"; then
+    echo "Не удалось скачать helm — нет интернета? Поставьте вручную: https://helm.sh/docs/intro/install/" >&2
+    rm -rf "$tmp"
+    return 1
+  fi
+  tar -xzf "$tmp/helm.tar.gz" -C "$tmp"
+  if [ -w "$(dirname "$dest")" ]; then
+    mv "$tmp/linux-${arch}/helm" "$dest"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo mv "$tmp/linux-${arch}/helm" "$dest"
+  else
+    echo "Скачан helm, но нет прав записать в $dest и нет sudo. Переместите вручную: $tmp/linux-${arch}/helm" >&2
+    return 1
+  fi
+  chmod +x "$dest" 2>/dev/null || sudo chmod +x "$dest"
+  rm -rf "$tmp"
+  if ! command -v helm >/dev/null 2>&1; then
+    echo "helm скачан в $dest, но не находится в PATH — проверьте \$PATH." >&2
+    return 1
+  fi
+  echo "helm ${helm_version} установлен в $dest." >&2
+}
+
 install_online_components() {
   local repo_root="$1"
   export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+  ensure_helm || return 1
 
   local rabbitmq_operator_url topology_operator_url kong_chart_version prometheus_chart_version
   rabbitmq_operator_url="$(manifest_get '.operators.rabbitmq_cluster_operator.manifest_url')"
