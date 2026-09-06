@@ -109,6 +109,8 @@ fi
 source "$REPO_ROOT/scripts/lib/manifest.sh"
 # shellcheck source=scripts/lib/os-detect.sh
 source "$REPO_ROOT/scripts/lib/os-detect.sh"
+# shellcheck source=scripts/lib/k3s-stage.sh
+source "$REPO_ROOT/scripts/lib/k3s-stage.sh"
 
 echo "── Шаг 1/6: определение ОС ──"
 if os_detect; then
@@ -139,40 +141,7 @@ fi
 echo
 
 echo "── Шаг 3/6: Kubernetes (k3s) ──"
-if [ "$PROFILE" = "existing" ]; then
-  echo "    profile=existing — k3s не устанавливается, используется уже настроенный kubectl-контекст"
-  export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
-else
-  # Проверяем и обычный $KUBECONFIG/~/.kube/config (кластер, поднятый не
-  # этим installer'ом), И штатный путь k3s (/etc/rancher/k3s/k3s.yaml) —
-  # раньше проверялся только первый вариант, из-за чего повторный запуск
-  # ПОСЛЕ уже успешной установки k3s этим же bootstrap.sh не находил его
-  # (обычный `kubectl` без KUBECONFIG смотрит на localhost:8080, которого
-  # никогда не существует — k3s слушает на :6443) и пытался ставить k3s
-  # заново поверх уже работающего.
-  #
-  # KUBECONFIG принудительно переключается на k3s.yaml ТОЛЬКО в ветках,
-  # где речь реально идёт о k3s — если уже была обнаружена рабочая связка
-  # через обычный $KUBECONFIG/~/.kube/config (не обязательно k3s), она
-  # используется как есть и не перезатирается (это тоже был баг: раньше
-  # безусловный export ниже по этому блоку срабатывал в любом случае).
-  K3S_KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
-  if kubectl get nodes >/dev/null 2>&1; then
-    echo "    ⚠ kubectl уже видит работающий кластер — пропускаю установку k3s."
-    echo "      Если это не тот кластер, который вы ожидали, прервите (Ctrl+C) и"
-    echo "      разберитесь вручную, либо используйте --profile existing."
-  elif [ -r "$K3S_KUBECONFIG" ] && KUBECONFIG="$K3S_KUBECONFIG" kubectl get nodes >/dev/null 2>&1; then
-    echo "    ⚠ Обнаружен уже работающий k3s ($K3S_KUBECONFIG) — пропускаю установку."
-    export KUBECONFIG="$K3S_KUBECONFIG"
-  elif [ "$OFFLINE" = "true" ]; then
-    "$REPO_ROOT/infra/airgap/scripts/10-install-k3s.sh"
-    export KUBECONFIG="$K3S_KUBECONFIG"
-  else
-    # shellcheck source=scripts/lib/k3s-install-online.sh
-    source "$REPO_ROOT/scripts/lib/k3s-install-online.sh"
-    k3s_install_online   # сама экспортирует KUBECONFIG=/etc/rancher/k3s/k3s.yaml при успехе
-  fi
-fi
+k3s_detect_or_install "$REPO_ROOT" "$PROFILE" "$OFFLINE"
 echo
 
 echo "── Шаг 4/6: RabbitMQ-операторы + Kong + kube-prometheus-stack ──"
@@ -188,13 +157,24 @@ if [ "$OFFLINE" = "true" ]; then
   "$REPO_ROOT/infra/airgap/scripts/30-install-operators.sh"
   "$REPO_ROOT/infra/airgap/scripts/40-install-charts.sh" "$TOPOLOGY"
 else
+  # Три отдельные функции (не одна общая) — намеренно: найдено долгой живой
+  # отладкой, что Kong и kube-prometheus-stack — оба медленные/капризные шаги,
+  # и когда что-то виснет, критично видеть, на КАКОМ именно шаге, а не просто
+  # "Шаг 4 не отвечает". Те же функции доступны по отдельности через
+  # scripts/stages/{04,05,06}-*.sh для ручного пошагового запуска — см.
+  # docs/ASTRA_LINUX.md, раздел "Поэтапная установка".
   # shellcheck source=scripts/lib/rabbitmq-webhook-certs.sh
   source "$REPO_ROOT/scripts/lib/rabbitmq-webhook-certs.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "$REPO_ROOT/scripts/lib/secrets.sh"
   # shellcheck source=scripts/lib/install-online-components.sh
   source "$REPO_ROOT/scripts/lib/install-online-components.sh"
-  install_online_components "$REPO_ROOT" "$TOPOLOGY"
+  echo "    -- 4а: RabbitMQ-операторы --"
+  install_namespace_and_rabbitmq_operators "$REPO_ROOT"
+  echo "    -- 4б: Kong --"
+  install_kong "$REPO_ROOT" "$TOPOLOGY"
+  echo "    -- 4в: kube-prometheus-stack --"
+  install_monitoring "$REPO_ROOT"
 fi
 echo
 
