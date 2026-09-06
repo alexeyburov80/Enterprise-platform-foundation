@@ -2,6 +2,14 @@
 set -uo pipefail   # без -e: хотим сами показать диагностику при сбое, а не просто прерваться
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
+# $1 (опционально) — топология: single (по умолчанию) | standard | ha.
+# Определяет, накладывается ли kong-offline-values-ha.yaml поверх базового
+# kong-offline-values.yaml (2 реплики + anti-affinity вместо 1 без него) —
+# найдено реальным прогоном: раньше этот скрипт ВСЕГДА ставил Kong с 1
+# репликой, даже когда вызывался для standard/ha (см. 25-start-registry.sh,
+# инкремент 6) — обратная сторона той же проблемы, что была у online-пути.
+TOPOLOGY="${1:-single}"
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="$HERE/airgap-bundle"
 
@@ -28,9 +36,13 @@ dump_diagnostics() {
   done
 }
 
-echo "==> Kong (из локального .tgz, без helm repo add)"
+echo "==> Kong (из локального .tgz, без helm repo add, topology=${TOPOLOGY})"
+kong_values_args=(-f "$HERE/values/kong-offline-values.yaml")
+if [ "$TOPOLOGY" != "single" ]; then
+  kong_values_args+=(-f "$HERE/values/kong-offline-values-ha.yaml")
+fi
 if ! helm upgrade --install kong "$BUNDLE"/charts/kong-*.tgz \
-    -n platform -f "$HERE/values/kong-offline-values.yaml" --wait --timeout 5m; then
+    -n platform "${kong_values_args[@]}" --wait --timeout 5m; then
   echo "!! Установка Kong не завершилась вовремя — вот что с подами:"
   dump_diagnostics "kong"
   echo "!! Частая причина: не импортировался какой-то вспомогательный образ (например busybox"

@@ -17,7 +17,7 @@
 #   source scripts/lib/rabbitmq-webhook-certs.sh
 #   source scripts/lib/secrets.sh
 #   source scripts/lib/install-online-components.sh
-#   install_online_components "$REPO_ROOT"
+#   install_online_components "$REPO_ROOT" "$TOPOLOGY"
 
 # Найдено реальным прогоном (не в песочнице): этот файл всегда предполагал,
 # что helm уже стоит на системе, и никогда не проверял/не ставил его сам —
@@ -58,6 +58,7 @@ ensure_helm() {
 
 install_online_components() {
   local repo_root="$1"
+  local topology="${2:-standard}"
   export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
   ensure_helm || return 1
 
@@ -73,11 +74,17 @@ install_online_components() {
   echo "==> RabbitMQ Cluster Operator + Messaging Topology Operator (самоподписанные сертификаты, без cert-manager)"
   rabbitmq_install_operators_with_selfsigned_certs "$rabbitmq_operator_url" "$topology_operator_url"
 
-  echo "==> Kong ${kong_chart_version} (Helm)"
+  echo "==> Kong ${kong_chart_version} (Helm, topology=${topology})"
   helm repo add kong https://charts.konghq.com >/dev/null 2>&1 || true
   helm repo update >/dev/null
+  local kong_values_args=(-f "$repo_root/infra/base/api-gateway/kong-values.yaml")
+  if [ "$topology" = "single" ]; then
+    # См. kong-values-single.yaml — на одном узле base-конфиг (2 реплики +
+    # hard anti-affinity) навсегда оставляет вторую/новую реплику в Pending.
+    kong_values_args+=(-f "$repo_root/infra/base/api-gateway/kong-values-single.yaml")
+  fi
   helm upgrade --install kong kong/kong --version "$kong_chart_version" \
-    -n platform --create-namespace -f "$repo_root/infra/base/api-gateway/kong-values.yaml"
+    -n platform --create-namespace "${kong_values_args[@]}"
 
   echo "==> kube-prometheus-stack ${prometheus_chart_version} (Helm)"
   ensure_grafana_admin_secret platform

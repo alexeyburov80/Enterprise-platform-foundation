@@ -186,7 +186,7 @@ if [ "$OFFLINE" = "true" ]; then
     "$REPO_ROOT/infra/airgap/scripts/25-start-registry.sh"
   fi
   "$REPO_ROOT/infra/airgap/scripts/30-install-operators.sh"
-  "$REPO_ROOT/infra/airgap/scripts/40-install-charts.sh"
+  "$REPO_ROOT/infra/airgap/scripts/40-install-charts.sh" "$TOPOLOGY"
 else
   # shellcheck source=scripts/lib/rabbitmq-webhook-certs.sh
   source "$REPO_ROOT/scripts/lib/rabbitmq-webhook-certs.sh"
@@ -194,7 +194,7 @@ else
   source "$REPO_ROOT/scripts/lib/secrets.sh"
   # shellcheck source=scripts/lib/install-online-components.sh
   source "$REPO_ROOT/scripts/lib/install-online-components.sh"
-  install_online_components "$REPO_ROOT"
+  install_online_components "$REPO_ROOT" "$TOPOLOGY"
 fi
 echo
 
