@@ -1,5 +1,5 @@
 # Требует RabbitMQ Messaging Topology Operator (устанавливается вместе
-# с Cluster Operator в scripts/bootstrap.sh). Позволяет объявлять
+# с Cluster Operator в bootstrap.sh). Позволяет объявлять
 # exchange/queue/policy декларативно, версионируя их в git вместе с кодом.
 #
 # Ниже — пример "скелета" шины: один общий exchange для событий бизнес-слоёв

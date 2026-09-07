@@ -1,0 +1,35 @@
+# Опциональный patch поверх infra/base/api-gateway/kong-values.yaml — для
+# профиля single (один узел).
+#
+# Найдено реальным прогоном (не в песочнице): base kong-values.yaml задаёт
+# replicaCount: 2 + hard podAntiAffinity — на одном узле вторая реплика
+# НИКОГДА не сможет запланироваться (anti-affinity требует разные узлы),
+# и любой helm upgrade, меняющий под (новая ревизия), создаёт третий под
+# (2 старых + 1 новый на rolling update), который тоже виснет в Pending —
+# `kubectl describe pod` показывает "didn't match pod anti-affinity rules".
+# Это тот же класс проблемы, что и с RabbitMQ/mes-stub (см.
+# infra/overlays/single/kustomization.yaml) — просто для Kong она не была
+# закрыта, т.к. Kong ставится через Helm, а не через kustomize overlay.
+#
+# Использование:
+#   helm upgrade --install kong kong/kong -n platform \
+#     -f infra/base/api-gateway/kong-values.yaml \
+#     -f infra/base/api-gateway/kong-values-single.yaml
+
+replicaCount: 1
+
+# Пустой affinity полностью убирает anti-affinity из base — с 1 репликой
+# конфликтовать реплике не с кем, но если явно не обнулить это поле, Helm
+# просто унаследует hard anti-affinity из первого -f файла (values не
+# массивы, а объекты, но `affinity` — это цельный вложенный объект, а не
+# список правил, которые можно было бы "убрать" частично — поэтому именно
+# полная замена на {}, не point-fix).
+affinity: {}
+
+podDisruptionBudget:
+  # С 1 репликой минимум minAvailable: 1 (базовое значение) означает, что
+  # эту единственную реплику НИКОГДА нельзя будет вытеснить (drain узла,
+  # обновление) — PDB заблокирует любую добровольную эвакуацию навсегда.
+  # Для single-профиля отключаем совсем: заменить под без простоя всё
+  # равно физически невозможно на одном узле, а PDB тут только мешает.
+  enabled: false

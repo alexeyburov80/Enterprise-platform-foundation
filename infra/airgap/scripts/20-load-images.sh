@@ -19,7 +19,7 @@ fi
 
 FAILED=()
 OK=0
-TOTAL=$(ls "$BLOBS"/*.tar 2>/dev/null | wc -l)
+TOTAL=$(find "$BLOBS" -maxdepth 1 -name '*.tar' 2>/dev/null | wc -l)
 
 for f in "$BLOBS"/*.tar; do
   name="$(basename "$f")"

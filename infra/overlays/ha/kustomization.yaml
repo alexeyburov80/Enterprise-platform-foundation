@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform
+
+resources:
+  - ../../base
+
+# Профиль "ha" — критичная прод-установка на 3+ узлах с гарантированным
+# разъездом реплик (base уже задаёт requiredDuringScheduling hard
+# anti-affinity и 3/2 реплики по умолчанию — здесь их менять не нужно).
+#
+# ⚠️ StorageClass НЕ имеет безопасного дефолта для этого профиля намеренно
+# (Phase 1 аудит, находка C7 + architecture.md раздел 6: "ha" не участвует
+# в auto-detect, чтобы не выбрать local-path под прод-нагрузку случайно —
+# local-path привязывает данные к конкретному узлу, что ломает саму идею HA
+# при потере этого узла). Обязательно замените значение ниже на реальный
+# StorageClass вашего кластера (Ceph/Longhorn/облачный CSI и т.п.) ПЕРЕД
+# применением — иначе PVC RabbitMQ зависнет в Pending навсегда.
+patches:
+  - target:
+      kind: RabbitmqCluster
+      name: platform-rabbitmq
+    patch: |-
+      - op: replace
+        path: /spec/persistence/storageClassName
+        value: __SET_STORAGECLASS_IN_OVERLAY__
+        # ⚠️ ЗАМЕНИТЕ это значение на реальный StorageClass перед `kubectl apply`.

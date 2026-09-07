@@ -1,5 +1,5 @@
 # Требует предварительно установленный RabbitMQ Cluster Operator
-# (см. scripts/bootstrap.sh). Сам оператор создаёт StatefulSet, Service,
+# (см. bootstrap.sh). Сам оператор создаёт StatefulSet, Service,
 # PDB и секреты — вручную их не пишем (принцип 3 ТЗ: готовые компоненты).
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
@@ -31,7 +31,14 @@ spec:
       cpu: "1"
       memory: 2Gi
   persistence:
-    storageClassName: standard   # TODO: заменить на реальный StorageClass кластера
+    # ⚠️ Намеренно невалидное значение-заглушка (Phase 1 аудит, находка C7:
+    # раньше здесь было "standard", которое просто не существует на большинстве
+    # bare-metal/k3s-кластеров — PVC зависал в Pending без явной причины).
+    # Теперь base не даёт значения по умолчанию вообще: каждый overlay
+    # (infra/overlays/single|standard|ha) обязан явно патчить это поле под
+    # свой StorageClass. Если вы видите это значение в реально применённом
+    # манифесте — overlay забыл собственный патч, PVC не забиндится никогда.
+    storageClassName: __SET_STORAGECLASS_IN_OVERLAY__
     storage: 10Gi
   rabbitmq:
     additionalConfig: |

@@ -1,0 +1,113 @@
+# release/manifest.yaml
+#
+# Единственный источник истины по версиям всех внешних компонентов фундамента.
+# bootstrap.sh, scripts/lib/*.sh, infra/airgap/scripts/*.sh и CI читают версии ТОЛЬКО отсюда —
+# нигде в остальном репозитории не должно быть захардкоженной версии или "latest".
+#
+# При апгрейде любого компонента правится только этот файл (+ CHANGELOG в этом же PR).
+#
+# Версии зафиксированы по состоянию на 2026-09-01 (последние стабильные релизы на эту
+# дату). Обновляя их, проверьте release notes выбранной версии на breaking changes —
+# отдельное внимание на cert-manager как зависимость RabbitMQ Cluster Operator
+# начиная с версии 2.20 и на смену "startup probe" в 2.22.x (см. release notes
+# cluster-operator v2.22.x — переход с exec на HTTP probe требует RabbitMQ 4.2.4+/4.3.0+).
+
+platform:
+  version: "0.1.0-dev"          # версия ЭТОГО фундамента (не путать с версиями компонентов ниже)
+
+kubernetes:
+  distribution: k3s
+  version: "v1.30.5+k3s1"
+
+# Поддержка ОС для installer'а (scripts/lib/os-detect.sh сверяется с этим списком).
+# `verified: false` означает: код написан и должен работать по документации
+# производителя, но реального прогона preflight+install на этой ОС ещё не было —
+# не выдавайте это за подтверждённую поддержку, пока не отмечено verified: true
+# после реального теста.
+os_support:
+  - id: astra
+    name: "Astra Linux Special Edition"
+    versions: ["1.7", "1.8"]
+    verified: false
+    notes: >
+      Дериватив Debian. Требует отдельной проверки режима замкнутой программной
+      среды (ЗПС/PARSEC) перед установкой — см. docs/ASTRA_LINUX.md.
+  - id: ubuntu
+    name: "Ubuntu Server"
+    versions: ["22.04", "24.04", "26.04"]
+    verified: false
+    notes: "Ожидается полная совместимость (стандартный путь k3s), но не прогонялось в этом проекте."
+  - id: debian
+    name: "Debian"
+    versions: ["12"]
+    verified: false
+    notes: "Ожидается полная совместимость (стандартный путь k3s), но не прогонялось в этом проекте."
+
+# Инструменты командной строки, которые installer скачивает сам (для offline-бандла)
+# или которые должны быть установлены локально для сборки бандла/CI.
+tooling:
+  kubectl:
+    version: "v1.30.5"
+  helm:
+    version: "v3.15.4"
+  kustomize:
+    version: "kustomize/v5.8.1"
+    source: "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz"
+  kubeconform:
+    version: "v0.8.0"
+    source: "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz"
+  yamllint:
+    version: "1.38.0"    # pip
+  yq:
+    version: "v4.44.3"
+    source: "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64"
+
+# Kubernetes-операторы, устанавливаемые как raw-манифесты (не через Helm).
+operators:
+  rabbitmq_cluster_operator:
+    version: "v2.22.4"
+    manifest_url: "https://github.com/rabbitmq/cluster-operator/releases/download/v2.22.4/cluster-operator.yml"
+  rabbitmq_messaging_topology_operator:
+    version: "v1.19.3"
+    # Вариант с cert-manager — для online-профиля (cert-manager ставится отдельно).
+    manifest_url_with_certmanager: "https://github.com/rabbitmq/messaging-topology-operator/releases/download/v1.19.3/messaging-topology-operator-with-certmanager.yaml"
+    # Вариант без cert-manager — для air-gap профиля (TLS для вебхуков генерируется
+    # локально в infra/airgap/scripts/30-install-operators.sh, см. комментарии там).
+    manifest_url_no_certmanager: "https://github.com/rabbitmq/messaging-topology-operator/releases/download/v1.19.3/messaging-topology-operator.yaml"
+
+# Helm-чарты.
+charts:
+  kong:
+    version: "2.42.0"
+    repo: "https://charts.konghq.com"
+    chart: "kong/kong"
+  kube-prometheus-stack:
+    version: "62.7.0"
+    repo: "https://prometheus-community.github.io/helm-charts"
+    chart: "prometheus-community/kube-prometheus-stack"
+
+# Образы контейнеров, используемые напрямую в манифестах этого репозитория
+# (образы, приходящие как транзитивная зависимость чартов/операторов выше,
+# сюда не дублируются — они фиксируются версией самого чарта/оператора).
+images:
+  rabbitmq: "rabbitmq:3.13-management"
+  mes_stub: "mes-stub:1.0.0"
+
+# Стратегия offline-реестра образов (см. docs/AIRGAP.md после его появления).
+#   none  — прямой `k3s ctr images import` на единственном узле (профиль single)
+#   local — локальный registry в кластере (образ ниже), все узлы читают через
+#           containerd mirror-конфиг (профили standard/ha, см.
+#           infra/airgap/scripts/25-start-registry.sh)
+registry:
+  mode: none
+  image: "registry:3.1.1"   # distribution/distribution — исправляет CVE-2026-35172, CVE-2026-33540
+  port: 5000
+
+tools_extra:
+  crane:
+    version: "v0.21.9"
+    source: "https://github.com/google/go-containerregistry/releases/download/v0.21.9/go-containerregistry_Linux_x86_64.tar.gz"
+    # crane — используется только infra/airgap/scripts/25-start-registry.sh
+    # для push образов из docker-archive tar в локальный registry (профили
+    # standard/ha + offline). Отдельная секция от tooling: выше, т.к. это не
+    # инструмент для локальной разработки/CI, а часть самого air-gap bundle.

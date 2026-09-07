@@ -1,0 +1,14 @@
+# Опциональный patch поверх infra/base/api-gateway/kong-values.yaml — только
+# для managed/облачных кластеров с реальным LoadBalancer-контроллером
+# (EKS/GKE/AKS и т.п.) или с установленным в кластере MetalLB.
+#
+# Использование:
+#   helm upgrade --install kong kong/kong -n platform \
+#     -f infra/base/api-gateway/kong-values.yaml \
+#     -f infra/base/api-gateway/kong-values-cloud-lb.yaml
+#
+# НЕ применяйте этот файл на bare-metal/k3s без MetalLB — сервис останется
+# в <pending> навсегда (Phase 1 аудит, находка C6).
+
+proxy:
+  type: LoadBalancer

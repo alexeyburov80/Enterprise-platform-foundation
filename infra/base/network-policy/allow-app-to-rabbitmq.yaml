@@ -1,0 +1,125 @@
+# Kong (API Gateway) -> mes-stub: разрешаем только то, что реально описано
+# маршрутом infra/base/api-gateway/mes-stub-route.yaml (принцип 6 ТЗ — по
+# мере появления новых модулей/Ingress по тому же образцу, для каждого
+# нужен свой allow-kong-to-<module>.yaml по этому шаблону).
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kong-to-mes-stub
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mes-stub
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kong
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# mes-stub -> RabbitMQ: приложение подключается к брокеру (env RABBITMQ_HOST
+# в infra/base/stub-service/deployment.yaml). Egress разрешаем на самом
+# mes-stub, ingress — зеркально на RabbitMQ (обе стороны нужны из-за
+# default-deny в обе стороны).
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mes-stub-to-rabbitmq-egress
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mes-stub
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: platform-rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672    # AMQP
+        - protocol: TCP
+          port: 15672   # management HTTP API (используется topology-operator'ом;
+                         # приложениям обычно не нужен, но пока держим открытым —
+                         # сузить можно отдельным правилом при необходимости)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-rabbitmq-ingress
+  namespace: platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mes-stub
+      ports:
+        - protocol: TCP
+          port: 5672
+        - protocol: TCP
+          port: 15672
+    - from:
+        # RabbitMQ Cluster Operator и Messaging Topology Operator ставятся
+        # оператором в свой собственный namespace "rabbitmq-system" (проверено
+        # по факту манифеста v1.19.3, см. release/manifest.yaml), не в
+        # "platform" — им нужен доступ к management API (15672) для настройки
+        # очередей/exchange/пользователей (infra/base/rabbitmq/topology.yaml).
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rabbitmq-system
+      ports:
+        - protocol: TCP
+          port: 15672
+    - from:
+        # RabbitMQ Cluster Operator и Messaging Topology Operator сами не в
+        # namespace "platform" (ставятся в свой namespace оператора) — это
+        # правило разрешает межузловую кластеризацию RabbitMQ (epmd/25672)
+        # между репликами самого RabbitMQ.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: platform-rabbitmq
+      ports:
+        - protocol: TCP
+          port: 4369    # epmd
+        - protocol: TCP
+          port: 25672   # inter-node clustering
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-to-rabbitmq-egress
+  namespace: platform
+spec:
+  # Кластеризация RabbitMQ двунаправленная — реплики сами инициируют
+  # соединения друг к другу, не только принимают (ingress-правило выше
+  # закрывает только "принимающую" сторону).
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-rabbitmq
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: platform-rabbitmq
+      ports:
+        - protocol: TCP
+          port: 4369
+        - protocol: TCP
+          port: 25672

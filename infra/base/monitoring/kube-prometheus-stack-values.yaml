@@ -1,11 +1,19 @@
 # Helm values для чарта prometheus-community/kube-prometheus-stack.
-# Устанавливается через scripts/bootstrap.sh:
+# Устанавливается через bootstrap.sh (scripts/lib/install-online-components.sh):
 #   helm install monitoring prometheus-community/kube-prometheus-stack \
 #     -n platform -f infra/base/monitoring/kube-prometheus-stack-values.yaml
 
 grafana:
   enabled: true
-  adminPassword: "CHANGE_ME"   # TODO: вынести в Secret / внешний секрет-менеджер
+  # Phase 1 аудит, находка H3: раньше здесь был "adminPassword: CHANGE_ME"
+  # открытым текстом в git. Секрет теперь создаётся отдельно (не хранится в
+  # репозитории) — см. scripts/lib/secrets.sh, вызывается из
+  # scripts/lib/install-online-components.sh и infra/airgap/scripts/40-install-charts.sh
+  # ДО этого helm install (иначе под Grafana не поднимется — секрета ещё нет).
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
   persistence:
     enabled: true
     size: 5Gi
@@ -29,7 +37,13 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: standard   # TODO: реальный StorageClass
+          # Phase 1 аудит, находка C7: раньше здесь стоял "standard" — StorageClass,
+          # которого нет на большинстве bare-metal/k3s кластеров, PVC зависал в
+          # Pending. local-path — рабочий дефолт для k3s (single/standard профилей).
+          # Для HA-профиля с распределённым хранилищем (Ceph/Longhorn/облачный CSI)
+          # ОБЯЗАТЕЛЬНО замените на реальный StorageClass — local-path привязывает
+          # данные к конкретному узлу, при потере узла история метрик теряется.
+          storageClassName: local-path
           resources:
             requests:
               storage: 20Gi
